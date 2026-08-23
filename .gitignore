@@ -13,3 +13,7 @@ compile_commands.json
 
 # Graph tooling output (regeneratable)
 graphify-out/
+
+# Planning docs (local only)
+*.md
+!README.md
