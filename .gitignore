@@ -1,0 +1,15 @@
+# Build
+build/
+cmake-build-*/
+compile_commands.json
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Graph tooling output (regeneratable)
+graphify-out/
