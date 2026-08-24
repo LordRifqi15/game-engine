@@ -50,6 +50,7 @@ set(SHADER_SRC
     shaders/shadow.frag
     shaders/skybox.vert
     shaders/skybox.frag
+    shaders/cull.comp
 )
 set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/basic.vert.spv
@@ -58,6 +59,7 @@ set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/shadow.frag.spv
     ${CMAKE_BINARY_DIR}/shaders/skybox.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/skybox.frag.spv
+    ${CMAKE_BINARY_DIR}/shaders/cull.comp.spv
 )
 
 add_custom_command(
@@ -69,6 +71,7 @@ add_custom_command(
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shadow.frag -o ${CMAKE_BINARY_DIR}/shaders/shadow.frag.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/skybox.vert -o ${CMAKE_BINARY_DIR}/shaders/skybox.vert.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/skybox.frag -o ${CMAKE_BINARY_DIR}/shaders/skybox.frag.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/cull.comp -o ${CMAKE_BINARY_DIR}/shaders/cull.comp.spv
     DEPENDS ${SHADER_SRC}
     COMMENT "Compiling shaders"
 )

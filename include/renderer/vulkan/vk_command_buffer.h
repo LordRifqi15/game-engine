@@ -75,6 +75,24 @@ private:
     VkBuffer indirectBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory indirectMemory_ = VK_NULL_HANDLE;
     void* indirectMapped_ = nullptr;
+    uint32_t lastInstanceCount_ = 0;
+
+    // Compute pipeline for GPU frustum culling.
+    VkPipeline cullPipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout cullLayout_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout cullSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorPool cullPool_ = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSet> cullSets_; // per frame in flight
+
+    // Instance storage buffers (SSBO): input + output per frame.
+    VkBuffer instanceInBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory instanceInMemory_ = VK_NULL_HANDLE;
+    void* instanceInMapped_ = nullptr;
+    VkBuffer instanceOutBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory instanceOutMemory_ = VK_NULL_HANDLE;
+
+    void createComputeResources();
+    void createCullPipeline();
 };
 
 } // namespace engine

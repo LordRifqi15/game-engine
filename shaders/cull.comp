@@ -1,0 +1,62 @@
+#version 450
+
+layout(set = 0, binding = 0) readonly buffer InputInstances {
+    vec4 data[];
+} inputInstances;
+
+layout(set = 0, binding = 1) buffer OutputInstances {
+    vec4 data[];
+} outputInstances;
+
+layout(set = 0, binding = 2) buffer DrawCommands {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    uint vertexOffset;
+    uint firstInstance;
+} cmds;
+
+layout(push_constant) uniform Push {
+    mat4 viewProjection;
+    vec4 plane0;
+    vec4 plane1;
+    vec4 plane2;
+    vec4 plane3;
+    vec4 plane4;
+    vec4 plane5;
+    uint instanceCount;
+    uint meshIndexCount;
+} pc;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.instanceCount) return;
+
+    // Each instance is 6 vec4s: model[0..3], color, params.
+    uint base = idx * 6;
+
+    vec3 center;
+    center.x = inputInstances.data[base + 0].w;
+    center.y = inputInstances.data[base + 1].w;
+    center.z = inputInstances.data[base + 2].w;
+
+    float sx = length(vec3(inputInstances.data[base + 0]));
+    float sy = length(vec3(inputInstances.data[base + 1]));
+    float sz = length(vec3(inputInstances.data[base + 2]));
+    float radius = max(sx, max(sy, sz)) * 0.87;
+
+    bool visible = true;
+    if (dot(pc.plane0.xyz, center) + pc.plane0.w < -radius) visible = false;
+    if (visible && (dot(pc.plane1.xyz, center) + pc.plane1.w < -radius)) visible = false;
+    if (visible && (dot(pc.plane2.xyz, center) + pc.plane2.w < -radius)) visible = false;
+    if (visible && (dot(pc.plane3.xyz, center) + pc.plane3.w < -radius)) visible = false;
+    if (visible && (dot(pc.plane4.xyz, center) + pc.plane4.w < -radius)) visible = false;
+    if (visible && (dot(pc.plane5.xyz, center) + pc.plane5.w < -radius)) visible = false;
+
+    if (visible) {
+        for (int v = 0; v < 6; ++v)
+            outputInstances.data[cmds.instanceCount * 6 + v] =
+                inputInstances.data[base + v];
+        atomicAdd(cmds.instanceCount, 1);
+    }
+}
