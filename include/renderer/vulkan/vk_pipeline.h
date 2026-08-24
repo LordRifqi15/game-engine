@@ -28,6 +28,7 @@ public:
     // Backend accessors for command recording (same module, allowed).
     VkPipeline handle() const { return pipeline_; }
     VkPipelineLayout layout() const { return layout_; }
+    VkDescriptorSetLayout cameraLayout() const { return cameraSetLayout_; }
 
 private:
     void create();
@@ -36,6 +37,7 @@ private:
     const VulkanSwapchain& swapchain_;
 
     VkPipelineLayout layout_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout cameraSetLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
 };
 

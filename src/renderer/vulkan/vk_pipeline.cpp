@@ -184,6 +184,7 @@ VulkanPipeline::VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swap
     layoutInfo.pSetLayouts = setLayouts.data();
     layoutInfo.pushConstantRangeCount = 1;
     layoutInfo.pPushConstantRanges = &pushRange;
+    cameraSetLayout_ = cameraSetLayout;
     if (vkCreatePipelineLayout(dev, &layoutInfo, nullptr, &layout_) != VK_SUCCESS) {
         fatal("failed to create pipeline layout");
     }

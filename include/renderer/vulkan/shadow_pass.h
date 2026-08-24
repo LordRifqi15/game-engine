@@ -6,10 +6,12 @@
 #include "core/instance_data.h"
 #include "core/mesh.h"
 
+#include <array>
 #include <vector>
 
-// Single-cascade directional shadow pass: depth-only image + render pass +
-// pipeline. Renders instanced meshes from the light's point of view.
+// Cascaded shadow maps: kCascadeCount depth-only passes (one per cascade),
+// each rendering instanced meshes from the light's point of view with its
+// own lightVP push constant.
 namespace engine {
 
 class VulkanDevice;
@@ -17,15 +19,17 @@ class VulkanSwapchain;
 
 class VulkanShadowPass {
 public:
-    VulkanShadowPass(VulkanDevice& device, const VulkanSwapchain& swapchain,
-                     VkDescriptorSetLayout cameraSetLayout);
+    static constexpr uint32_t kCascadeCount = 4;
+    static constexpr uint32_t kSize = 1024;
+
+    VulkanShadowPass(VulkanDevice& device, const VulkanSwapchain& swapchain);
     ~VulkanShadowPass();
 
     VulkanShadowPass(const VulkanShadowPass&) = delete;
     VulkanShadowPass& operator=(const VulkanShadowPass&) = delete;
 
-    // Begins the shadow render pass (clears to 1.0, binds pipeline).
-    void begin(VkCommandBuffer cmd);
+    // Begins the shadow render pass for `cascade` (clears to 1.0, binds pipeline).
+    void begin(VkCommandBuffer cmd, uint32_t cascade);
     // Draws one batch (mesh + instances) — same instance buffers as main pass.
     void drawBatch(VkCommandBuffer cmd, const Mesh& mesh,
                    const std::vector<InstanceData>& instances,
@@ -33,31 +37,24 @@ public:
     // Ends the render pass.
     void end(VkCommandBuffer cmd);
 
-    // For main-pass descriptor writes.
-    VkImageView view() const { return view_; }
+    // For main-pass descriptor writes (set 2, bindings 0..3).
+    VkImageView view(uint32_t cascade) const { return views_[cascade]; }
     VkSampler sampler() const { return sampler_; }
-    VkDescriptorSetLayout layout() const { return setLayout_; }
-
 private:
     void createResources();
     void createRenderPass();
-    void createPipelineAndDescriptors();
+    void createPipeline();
 
     VulkanDevice& device_;
     const VulkanSwapchain& swapchain_;
 
-    static constexpr uint32_t kSize = 2048;
-    VkImage image_ = VK_NULL_HANDLE;
-    VkDeviceMemory memory_ = VK_NULL_HANDLE;
-    VkImageView view_ = VK_NULL_HANDLE;
+    std::array<VkImage, kCascadeCount> images_{};
+    std::array<VkDeviceMemory, kCascadeCount> memories_{};
+    std::array<VkImageView, kCascadeCount> views_{};
+    std::array<VkFramebuffer, kCascadeCount> framebuffers_{};
+
     VkSampler sampler_ = VK_NULL_HANDLE;
-
     VkRenderPass renderPass_ = VK_NULL_HANDLE;
-    VkFramebuffer framebuffer_ = VK_NULL_HANDLE;
-
-    VkDescriptorSetLayout setLayout_ = VK_NULL_HANDLE;   // set 2: shadow sampler
-    VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
-    std::vector<VkDescriptorSet> descriptorSets_;        // per frame-in-flight
 
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
