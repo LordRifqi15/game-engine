@@ -52,9 +52,17 @@ void VkRenderer::beginFrame(const Camera& camera, const DirectionalLight& light)
     cameraPos_ = cam.position;
 }
 
-void VkRenderer::drawMeshInstanced(const Mesh& mesh, const std::vector<InstanceData>& instances,
+void VkRenderer::drawMeshInstanced(const Mesh& mesh, const InstanceData& instance,
                                    const Texture* texture) {
-    pendingBatches_.push_back({&mesh, texture, &instances});
+    // Queue per-instance data for CPU upload to SSBO.
+    allInstances_.push_back(instance);
+    PendingBatch batch;
+    batch.mesh = &mesh;
+    batch.texture = texture;
+    batch.firstInstance = nextInstanceOffset_;
+    batch.instanceCount = 1; // one instance per drawMeshInstanced call
+    ++nextInstanceOffset_;
+    pendingBatches_.push_back(batch);
 }
 
 void VkRenderer::drawFrame() {
@@ -69,6 +77,8 @@ void VkRenderer::drawFrame() {
         std::FILE* dbg = std::fopen("/tmp/frame_probe.txt", "w");
         if (dbg) { fprintf(dbg, "recorded=%d skipped=%d", framesRecorded, framesSkipped); fclose(dbg); }
         pendingBatches_.clear();
+    allInstances_.clear();
+    nextInstanceOffset_ = 0;
         return; // recreated, skip this frame
     }
     ++framesRecorded;
@@ -108,6 +118,8 @@ void VkRenderer::drawFrame() {
     device_->retireScratchBuffers(currentFrame_);
 
     pendingBatches_.clear();
+    allInstances_.clear();
+    nextInstanceOffset_ = 0;
 
     currentFrame_ = (currentFrame_ + 1) % kMaxFramesInFlight;
 }

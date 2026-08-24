@@ -34,9 +34,9 @@ void Renderer::beginFrame(const Camera& camera, const DirectionalLight& light) {
     impl_->backend.beginFrame(camera, light);
 }
 
-void Renderer::drawMeshInstanced(const Mesh& mesh, const std::vector<InstanceData>& instances,
+void Renderer::drawMeshInstanced(const Mesh& mesh, const InstanceData& instance,
                                  const Texture* texture) {
-    impl_->backend.drawMeshInstanced(mesh, instances, texture);
+    impl_->backend.drawMeshInstanced(mesh, instance, texture);
 }
 
 uint32_t Renderer::swapchainWidth() const { return impl_->backend.swapchainWidth(); }

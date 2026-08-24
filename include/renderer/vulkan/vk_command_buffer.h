@@ -91,8 +91,6 @@ private:
     VkBuffer instanceOutBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory instanceOutMemory_ = VK_NULL_HANDLE;
 
-    void createComputeResources();
-    void createCullPipeline();
 };
 
 } // namespace engine

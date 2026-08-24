@@ -218,24 +218,22 @@ void VulkanShadowPass::begin(VkCommandBuffer cmd, uint32_t cascade) {
 }
 
 void VulkanShadowPass::drawBatch(VkCommandBuffer cmd, const Mesh& mesh,
-                                 const std::vector<InstanceData>& instances,
-                                 const glm::mat4& lightVP) {
-    if (instances.empty() || mesh.indices.empty() || mesh.vertices.empty()) return;
+                                 uint32_t instanceCount, const glm::mat4& lightVP) {
+    if (instanceCount == 0 || mesh.indices.empty() || mesh.vertices.empty()) return;
 
     vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(glm::mat4), &lightVP);
 
     VkBuffer vertexBuffer = device_.scratchVertexBuffer(mesh.vertices);
-    VkBuffer instanceBuffer = device_.scratchVertexBuffer(instances);
-    VkBuffer buffers[] = {vertexBuffer, instanceBuffer};
-    VkDeviceSize offsets[] = {0, 0};
-    vkCmdBindVertexBuffers(cmd, 0, 2, buffers, offsets);
+    VkBuffer buffers[] = {vertexBuffer};
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(cmd, 0, 1, buffers, offsets);
 
     VkBuffer indexBuffer = device_.scratchIndexBuffer(mesh.indices);
     vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
     vkCmdDrawIndexed(cmd, static_cast<uint32_t>(mesh.indices.size()),
-                     static_cast<uint32_t>(instances.size()), 0, 0, 0);
+                     instanceCount, 0, 0, 0);
 }
 
 void VulkanShadowPass::end(VkCommandBuffer cmd) {

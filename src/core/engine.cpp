@@ -45,15 +45,13 @@ Engine::~Engine() {
 }
 
 void Engine::run() {
-    RenderSystem renderSystem(*renderer_, jobs_);
-    renderSystem.setCamera(scene_->camera());
+    RenderSystem renderSystem(*renderer_);
 
     while (!window_.shouldClose()) {
         time_.beginFrame();
         window_.pollEvents();
         update(time_.deltaTime());
         world_->update(scene_->camera().position);
-        renderSystem.setCamera(scene_->camera());
 
         renderSystem.beginFrame(scene_->camera(), scene_->light());
         renderSystem.update(scene_->registry());

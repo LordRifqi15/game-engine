@@ -37,7 +37,7 @@ public:
     void beginFrame(const Camera& camera, const DirectionalLight& light);
 
     // Scene-facing draw call: renders all instances of a mesh in one draw.
-    void drawMeshInstanced(const Mesh& mesh, const std::vector<InstanceData>& instances,
+    void drawMeshInstanced(const Mesh& mesh, const InstanceData& instance,
                            const Texture* texture);
 
     // Draws one frame (submits all queued draws).
@@ -65,6 +65,8 @@ private:
 
     // Batches queued by drawMeshInstanced(), consumed at drawFrame().
     std::vector<PendingBatch> pendingBatches_;
+    std::vector<InstanceData> allInstances_;
+    uint32_t nextInstanceOffset_ = 0;
 
     glm::mat4 viewProjection_{1.0f};
     DirectionalLight light_{};

@@ -15,8 +15,9 @@ class Texture;
 
 struct PendingBatch {
     const Mesh* mesh;
-    const Texture* texture; // null = untextured (solid color)
-    const std::vector<InstanceData>* instances;
+    const Texture* texture;
+    uint32_t firstInstance; // offset into flat instance buffer
+    uint32_t instanceCount;
 };
 
 class RenderCommandBuffer {

@@ -43,8 +43,8 @@ public:
     const std::vector<unsigned char>& colorPixels() const;
 
     // Scene-facing draw call: renders all instances of a mesh in one draw.
-    void drawMeshInstanced(const Mesh& mesh, const std::vector<InstanceData>& instances,
-                           const Texture* texture);
+    void drawMeshInstanced(const Mesh& mesh, const InstanceData& instance,
+                           const Texture* texture = nullptr);
 
     // Submits all queued draw calls for this frame (present).
     void endFrame();
