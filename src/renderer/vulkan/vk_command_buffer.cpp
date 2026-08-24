@@ -58,6 +58,10 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice& device, VulkanSwapchain& 
     createShadowSamplerSets();
     shadowPass_ = new VulkanShadowPass(device_, swapchain_,
                                        device_.cameraDescriptorLayout());
+    environment_ = new VulkanEnvironment(device_, swapchain_,
+                                         device_.cameraDescriptorLayout(),
+                                         device_.materialDescriptorLayout(),
+                                         device_.shadowSamplerLayout());
 
     // Fill shadow sampler descriptors now that the pass owns view+sampler.
     VkDevice dev = device_.handle();
@@ -273,6 +277,10 @@ void VulkanCommandBuffer::recordFrame(uint32_t frameIndex, uint32_t imageIndex,
     // Shadow map (set 2).
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.layout(),
                             2, 1, &shadowSamplerSets_[frameIndex], 0, nullptr);
+    // IBL environment (set 3).
+    VkDescriptorSet envSet = environment_->frameSet(frameIndex);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.layout(),
+                            3, 1, &envSet, 0, nullptr);
 
     VkViewport viewport{};
     viewport.width = static_cast<float>(swapchain_.extent().width);
@@ -310,6 +318,11 @@ void VulkanCommandBuffer::recordFrame(uint32_t frameIndex, uint32_t imageIndex,
         vkCmdDrawIndexed(cmd, static_cast<uint32_t>(mesh.indices.size()),
                          static_cast<uint32_t>(instances.size()), 0, 0, 0);
     }
+
+    // Skybox drawn last (depth-tested against scene geometry).
+    environment_->beginSkybox(cmd, frameIndex, viewProjection, cameraPos);
+    environment_->drawSkybox(cmd);
+    environment_->endSkybox(cmd);
 
     vkCmdEndRenderPass(cmd);
 

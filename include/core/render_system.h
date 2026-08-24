@@ -141,7 +141,7 @@ public:
         }
     }
 
-    void endFrame() { renderer_.endFrame(); }
+    void endFrame() { renderer_.endFrame(); } // light already flows via beginFrame
 
     void setCamera(const Camera& camera) { camera_ = camera; camFov_ = camera.fov; }
 

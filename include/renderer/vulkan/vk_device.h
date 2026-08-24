@@ -72,6 +72,9 @@ public:
     // Shadow map combined-image-sampler layout (set 2, binding 0, fragment).
     void createShadowSamplerLayout();
     VkDescriptorSetLayout shadowSamplerLayout() const { return shadowSamplerLayout_; }
+    // IBL environment set (set 3): irradiance/prefiltered/BRDF/env cubemaps.
+    void createSet3Layout();
+    VkDescriptorSetLayout set3Layout() const { return set3Layout_; }
 
     // Persistent host-visible buffer (for camera UBO). One per frame-in-flight.
     void createUniformBuffers(uint32_t frameCount, VkDeviceSize size);
@@ -120,6 +123,7 @@ private:
     VkDescriptorSetLayout cameraDescriptorLayout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout materialDescriptorLayout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout shadowSamplerLayout_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout set3Layout_ = VK_NULL_HANDLE;
 };
 
 } // namespace engine

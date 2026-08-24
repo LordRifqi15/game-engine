@@ -12,6 +12,11 @@ layout(set = 0, binding = 0) uniform CameraUBO {
 layout(set = 1, binding = 0) uniform sampler2D materialTex;
 layout(set = 2, binding = 0) uniform sampler2D shadowMap;
 
+layout(set = 3, binding = 0) uniform samplerCube irradianceMap;
+layout(set = 3, binding = 1) uniform samplerCube prefilteredMap;
+layout(set = 3, binding = 2) uniform sampler2D brdfLut;
+layout(set = 3, binding = 3) uniform samplerCube envCube;
+
 layout(location = 0) in vec3 fragColor;
 layout(location = 1) in vec3 fragNormal;
 layout(location = 2) in vec2 fragUV;
@@ -90,7 +95,17 @@ void main() {
 
     // Direct-light intensity folded in (no 1/PI split).
     vec3 Lo = (kD * albedo + specular) * ubo.lightColor.rgb * NdotL * shadow * 0.6;
-    vec3 ambient = ubo.params.x * albedo;
+
+    // Image-based lighting: diffuse irradiance + specular split-sum.
+    vec3 irradiance = texture(irradianceMap, N).rgb;
+    vec3 R = reflect(-V, N);
+    vec3 prefiltered =
+        textureLod(prefilteredMap, R, roughness * 5.0).rgb;
+    vec2 envBrdf =
+        texture(brdfLut, vec2(max(dot(N, V), 0.0), roughness)).rg;
+    vec3 specularIBL = prefiltered * (F * envBrdf.x + envBrdf.y);
+
+    vec3 ambient = kD * irradiance * albedo + specularIBL;
     vec3 color = ambient + Lo;
 
     color = pow(clamp(color, vec3(0.0), vec3(1.0)), vec3(1.0 / 2.2));

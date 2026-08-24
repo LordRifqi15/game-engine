@@ -70,7 +70,8 @@ VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code
 VulkanPipeline::VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swapchain,
                                VkDescriptorSetLayout cameraSetLayout,
                                VkDescriptorSetLayout materialSetLayout,
-                               VkDescriptorSetLayout shadowSamplerSetLayout)
+                               VkDescriptorSetLayout shadowSamplerSetLayout,
+                               VkDescriptorSetLayout envSetLayout)
     : device_(device), swapchain_(swapchain) {
     VkDevice dev = device_.handle();
 
@@ -169,14 +170,20 @@ VulkanPipeline::VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swap
     dynamicState.dynamicStateCount = 2;
     dynamicState.pDynamicStates = dynamics;
 
-    std::array<VkDescriptorSetLayout, 3> setLayouts = {
-        cameraSetLayout, materialSetLayout, shadowSamplerSetLayout};
+    std::array<VkDescriptorSetLayout, 4> setLayouts = {
+        cameraSetLayout, materialSetLayout, shadowSamplerSetLayout,
+        envSetLayout};
+    // Push constants: per-object color (16B) shared between vert+frag.
+    VkPushConstantRange pushRange{};
+    pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pushRange.offset = 0;
+    pushRange.size = 16;
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layoutInfo.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
     layoutInfo.pSetLayouts = setLayouts.data();
-    layoutInfo.pushConstantRangeCount = 0;
-    layoutInfo.pPushConstantRanges = nullptr;
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &pushRange;
     if (vkCreatePipelineLayout(dev, &layoutInfo, nullptr, &layout_) != VK_SUCCESS) {
         fatal("failed to create pipeline layout");
     }

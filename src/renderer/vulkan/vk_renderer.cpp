@@ -19,7 +19,8 @@ VkRenderer::VkRenderer(Window& window, VulkanInstance& vk)
     pipeline_ = new VulkanPipeline(*device_, *swapchain_,
                                    device_->cameraDescriptorLayout(),
                                    device_->materialDescriptorLayout(),
-                                   device_->shadowSamplerLayout());
+                                   device_->shadowSamplerLayout(),
+                                   device_->set3Layout());
     textureCache_ = new TextureCache(*device_);
     commandBuffers_ =
         new VulkanCommandBuffer(*device_, *swapchain_, *pipeline_, *textureCache_);

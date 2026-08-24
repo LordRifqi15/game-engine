@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <set>
+#include <array>
 #include <cstring>
 
 
@@ -83,6 +84,7 @@ VulkanDevice::VulkanDevice(VulkanInstance& vk)
 
     createCameraDescriptorLayout();
     createMaterialDescriptorLayout();
+    createSet3Layout();
     createShadowSamplerLayout();
     createCommandPool();
 }
@@ -217,6 +219,22 @@ void VulkanDevice::createMaterialDescriptorLayout() {
     layoutInfo.pBindings = &binding;
     if (vkCreateDescriptorSetLayout(device_, &layoutInfo, nullptr, &materialDescriptorLayout_) != VK_SUCCESS)
         fatal("failed to create material descriptor set layout");
+}
+
+void VulkanDevice::createSet3Layout() {
+    std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
+    for (uint32_t b = 0; b < 4; ++b) {
+        bindings[b].binding = b;
+        bindings[b].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        bindings[b].descriptorCount = 1;
+        bindings[b].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    VkDescriptorSetLayoutCreateInfo li{};
+    li.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    li.bindingCount = static_cast<uint32_t>(bindings.size());
+    li.pBindings = bindings.data();
+    if (vkCreateDescriptorSetLayout(device_, &li, nullptr, &set3Layout_) != VK_SUCCESS)
+        fatal("failed to create set3 layout");
 }
 
 void VulkanDevice::createShadowSamplerLayout() {

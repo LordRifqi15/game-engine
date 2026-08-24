@@ -6,6 +6,7 @@
 #include <array>
 #include <string>
 #include <cstdio>
+#include <unistd.h>
 #include <cstdlib>
 #include <vector>
 
@@ -18,8 +19,23 @@ void fatal(const char* msg) {
     std::exit(EXIT_FAILURE);
 }
 
+std::string shadowExeDir() {
+    char buf[4096];
+    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (len <= 0) return ".";
+    std::string p(buf, static_cast<size_t>(len));
+    auto slash = p.find_last_of('/');
+    return slash == std::string::npos ? "." : p.substr(0, slash);
+}
+
 std::vector<char> readFileBytes(const std::string& path) {
-    FILE* f = std::fopen(path.c_str(), "rb");
+    std::string exeDir = shadowExeDir();
+    std::string full = path;
+    for (const std::string& base : {exeDir + "/", exeDir + "/../"}) {
+        FILE* probe = std::fopen((base + path).c_str(), "rb");
+        if (probe) { std::fclose(probe); full = base + path; break; }
+    }
+    FILE* f = std::fopen(full.c_str(), "rb");
     if (!f) {
         char buf[256];
         std::snprintf(buf, sizeof(buf), "failed to open shader: %s", path.c_str());

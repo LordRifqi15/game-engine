@@ -18,7 +18,8 @@ public:
     VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swapchain,
                    VkDescriptorSetLayout cameraSetLayout,
                    VkDescriptorSetLayout materialSetLayout,
-                   VkDescriptorSetLayout shadowSamplerSetLayout);
+                   VkDescriptorSetLayout shadowSamplerSetLayout,
+                   VkDescriptorSetLayout envSetLayout);
     ~VulkanPipeline() override;
 
     VulkanPipeline(const VulkanPipeline&) = delete;

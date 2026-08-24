@@ -8,6 +8,7 @@
 #include "core/mesh.h"
 
 #include "renderer/api/render_command_buffer.h"
+#include "renderer/vulkan/environment.h"
 #include "renderer/vulkan/shadow_pass.h"
 
 #include <array>
@@ -62,6 +63,7 @@ private:
     std::vector<VkDescriptorSet> shadowSamplerSets_;
     VkDescriptorPool shadowSamplerPool_ = VK_NULL_HANDLE;
     VulkanShadowPass* shadowPass_ = nullptr;
+    VulkanEnvironment* environment_ = nullptr;
 
     // Material texture descriptors (set 1): one set per unique texture.
     VkDescriptorPool materialPool_ = VK_NULL_HANDLE;

@@ -35,6 +35,7 @@ add_executable(engine
     src/renderer/vulkan/vk_pipeline.cpp
     src/renderer/vulkan/vk_command_buffer.cpp
     src/renderer/vulkan/texture_cache.cpp
+    src/renderer/vulkan/environment.cpp
     src/renderer/vulkan/shadow_pass.cpp
     src/renderer/vulkan/vk_renderer.cpp
 )
@@ -46,12 +47,16 @@ set(SHADER_SRC
     shaders/basic.frag
     shaders/shadow.vert
     shaders/shadow.frag
+    shaders/skybox.vert
+    shaders/skybox.frag
 )
 set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/basic.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/basic.frag.spv
     ${CMAKE_BINARY_DIR}/shaders/shadow.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/shadow.frag.spv
+    ${CMAKE_BINARY_DIR}/shaders/skybox.vert.spv
+    ${CMAKE_BINARY_DIR}/shaders/skybox.frag.spv
 )
 
 add_custom_command(
@@ -61,6 +66,8 @@ add_custom_command(
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/basic.frag -o ${CMAKE_BINARY_DIR}/shaders/basic.frag.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shadow.vert -o ${CMAKE_BINARY_DIR}/shaders/shadow.vert.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shadow.frag -o ${CMAKE_BINARY_DIR}/shaders/shadow.frag.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/skybox.vert -o ${CMAKE_BINARY_DIR}/shaders/skybox.vert.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/skybox.frag -o ${CMAKE_BINARY_DIR}/shaders/skybox.frag.spv
     DEPENDS ${SHADER_SRC}
     COMMENT "Compiling shaders"
 )
