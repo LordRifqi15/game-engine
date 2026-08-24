@@ -4,6 +4,7 @@
 #include "core/job_system.h"
 #include "core/scene.h"
 #include "core/time.h"
+#include "core/world.h"
 
 namespace engine {
 
@@ -39,6 +40,7 @@ private:
     std::vector<class Mesh> gltfMeshes_;
     const class Texture* cubeTexture_ = nullptr; // opaque; owned by renderer
     CameraController controller_;
+    World* world_ = nullptr;
     JobSystem jobs_;
     bool debugTiming_ = false; // set true to log FPS once per second
 };

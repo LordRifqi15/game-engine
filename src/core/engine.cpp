@@ -23,37 +23,9 @@ Engine::Engine(Window& window)
     renderer_ = new Renderer(window_);
     scene_ = new Scene();
 
-    // Test world (ECS): shared meshes, entities = IDs, data = components.
+        // Streaming world: shared triangle mesh, entities created per chunk.
     triangleMesh_ = new Mesh(mesh_primitives::triangle());
-    for (int x = -5; x <= 5; ++x) {
-        for (int z = -5; z <= 5; ++z) {
-            TransformComponent t;
-            t.position = {static_cast<float>(x), 0.0f, static_cast<float>(z)};
-            Material m;
-            m.baseColor = {(static_cast<float>(x) + 5.0f) / 10.0f,
-                           0.5f,
-                           (static_cast<float>(z) + 5.0f) / 10.0f,
-                           1.0f};
-            scene_->createRenderable(triangleMesh_, t, m);
-        }
-    }
-
-    // GLTF model: one entity per primitive; materials + textures from file.
-    auto gltfPrims = loadGLTF("assets/models/cube.gltf", &renderer_->textureCache());
-    const glm::vec3 modelSpots[] = {{-2.0f, 1.5f, -2.0f}, {2.0f, 1.5f, -1.0f}, {0.0f, 1.5f, -4.0f}};
-    // Reserve first: pointers into gltfMeshes_ must stay stable.
-    gltfMeshes_.reserve(sizeof(modelSpots) / sizeof(modelSpots[0]) * gltfPrims.size());
-    for (const auto& spot : modelSpots) {
-        for (const auto& prim : gltfPrims) {
-            gltfMeshes_.push_back(prim.mesh);
-            TransformComponent t;
-            t.position = spot;
-            Entity e = scene_->createRenderable(&gltfMeshes_.back(), t, prim.material);
-            BoundsComponent b;
-            b.radius = 1.8f;
-            scene_->registry().addComponent<BoundsComponent>(e, b);
-        }
-    }
+    world_ = new World(scene_->registry(), triangleMesh_, 2, 16.0f);
 
     Input::init(window_);
     jobs_.init(std::max(2u, std::thread::hardware_concurrency() - 1));
@@ -80,6 +52,7 @@ void Engine::run() {
         time_.beginFrame();
         window_.pollEvents();
         update(time_.deltaTime());
+        world_->update(scene_->camera().position);
         renderSystem.setCamera(scene_->camera());
 
         renderSystem.beginFrame(scene_->camera(), scene_->light());

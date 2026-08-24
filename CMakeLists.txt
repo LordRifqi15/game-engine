@@ -23,6 +23,7 @@ add_executable(engine
     src/core/engine.cpp
     src/core/job_system.cpp
     src/core/time.cpp
+    src/core/world.cpp
     src/core/mesh.cpp
     src/core/mesh_loader.cpp
     src/core/gltf_loader.cpp
