@@ -63,6 +63,7 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice& device,
 
     createCameraDescriptors();
     createShadowSamplerSets();
+    createIndirectBuffer();
 }
 
 VulkanCommandBuffer::~VulkanCommandBuffer() {
@@ -74,6 +75,43 @@ VulkanCommandBuffer::~VulkanCommandBuffer() {
     if (materialPool_ != VK_NULL_HANDLE) vkDestroyDescriptorPool(dev, materialPool_, nullptr);
     if (shadowSamplerPool_ != VK_NULL_HANDLE)
         vkDestroyDescriptorPool(dev, shadowSamplerPool_, nullptr);
+    if (indirectBuffer_) {
+        vkUnmapMemory(dev, indirectMemory_);
+        vkDestroyBuffer(dev, indirectBuffer_, nullptr);
+        vkFreeMemory(dev, indirectMemory_, nullptr);
+    }
+}
+
+void VulkanCommandBuffer::createIndirectBuffer() {
+    VkDevice dev = device_.handle();
+    VkDeviceSize bytes = kMaxIndirectDraws * sizeof(VkDrawIndexedIndirectCommand);
+
+    VkBufferCreateInfo bi{};
+    bi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bi.size = bytes;
+    bi.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    if (vkCreateBuffer(dev, &bi, nullptr, &indirectBuffer_) != VK_SUCCESS)
+        fatal("indirect buffer create");
+    VkMemoryRequirements reqs{};
+    vkGetBufferMemoryRequirements(dev, indirectBuffer_, &reqs);
+    VkPhysicalDeviceMemoryProperties mp{};
+    vkGetPhysicalDeviceMemoryProperties(device_.physical(), &mp);
+    for (uint32_t i = 0; i < mp.memoryTypeCount; ++i) {
+        if ((reqs.memoryTypeBits & (1u << i)) &&
+            (mp.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+            VkMemoryAllocateInfo ai{};
+            ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            ai.allocationSize = reqs.size;
+            ai.memoryTypeIndex = i;
+            if (vkAllocateMemory(dev, &ai, nullptr, &indirectMemory_) == VK_SUCCESS)
+                break;
+            indirectMemory_ = VK_NULL_HANDLE;
+        }
+    }
+    if (!indirectMemory_) fatal("indirect memory alloc");
+    vkBindBufferMemory(dev, indirectBuffer_, indirectMemory_, 0);
+    if (vkMapMemory(dev, indirectMemory_, 0, bytes, 0, &indirectMapped_) != VK_SUCCESS)
+        fatal("indirect map");
 }
 
 void VulkanCommandBuffer::createCameraDescriptors() {
@@ -350,10 +388,22 @@ void VulkanCommandBuffer::recordFrame(uint32_t frameIndex, uint32_t imageIndex,
     VkRect2D scissor{{0, 0}, swapchain_.extent()};
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
+    // Fill indirect commands from CPU (host-visible buffer).
+    auto* commands = reinterpret_cast<VkDrawIndexedIndirectCommand*>(indirectMapped_);
+    uint32_t drawCount = 0;
+
     for (const auto& batch : batches) {
         const Mesh& mesh = *batch.mesh;
         const auto& instances = *batch.instances;
         if (instances.empty() || mesh.indices.empty() || mesh.vertices.empty()) continue;
+        if (drawCount >= kMaxIndirectDraws) break;
+
+        commands[drawCount].indexCount = static_cast<uint32_t>(mesh.indices.size());
+        commands[drawCount].instanceCount = static_cast<uint32_t>(instances.size());
+        commands[drawCount].firstIndex = 0;
+        commands[drawCount].vertexOffset = 0;
+        commands[drawCount].firstInstance = 0;
+        ++drawCount;
 
         VkBuffer vertexBuffer = device_.scratchVertexBuffer(mesh.vertices);
         VkBuffer instanceBuffer = device_.scratchVertexBuffer(instances);
@@ -368,8 +418,9 @@ void VulkanCommandBuffer::recordFrame(uint32_t frameIndex, uint32_t imageIndex,
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 pipeline_.layout(), 1, 1, &matSet, 0, nullptr);
 
-        vkCmdDrawIndexed(cmd, static_cast<uint32_t>(mesh.indices.size()),
-                         static_cast<uint32_t>(instances.size()), 0, 0, 0);
+        vkCmdDrawIndexedIndirect(cmd, indirectBuffer_,
+                                 drawCount * sizeof(VkDrawIndexedIndirectCommand),
+                                 1, sizeof(VkDrawIndexedIndirectCommand));
     }
 
     vkCmdEndRenderPass(cmd);

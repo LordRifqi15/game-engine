@@ -45,6 +45,7 @@ public:
 private:
     void createCameraDescriptors();
     void createShadowSamplerSets();
+    void createIndirectBuffer();
     // Allocates (and caches) a set 1 descriptor for the texture.
     VkDescriptorSet materialDescriptor(const Texture* tex);
 
@@ -68,6 +69,12 @@ private:
     // Material texture descriptors (set 1): one set per unique texture.
     VkDescriptorPool materialPool_ = VK_NULL_HANDLE;
     std::unordered_map<const Texture*, VkDescriptorSet> materialSets_;
+
+    // Indirect draw buffer: host-visible, filled from CPU each frame.
+    static constexpr uint32_t kMaxIndirectDraws = 16;
+    VkBuffer indirectBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory indirectMemory_ = VK_NULL_HANDLE;
+    void* indirectMapped_ = nullptr;
 };
 
 } // namespace engine
