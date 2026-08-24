@@ -69,7 +69,8 @@ VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code
 
 VulkanPipeline::VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swapchain,
                                VkDescriptorSetLayout cameraSetLayout,
-                               VkDescriptorSetLayout materialSetLayout)
+                               VkDescriptorSetLayout materialSetLayout,
+                               VkDescriptorSetLayout shadowSamplerSetLayout)
     : device_(device), swapchain_(swapchain) {
     VkDevice dev = device_.handle();
 
@@ -168,7 +169,8 @@ VulkanPipeline::VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swap
     dynamicState.dynamicStateCount = 2;
     dynamicState.pDynamicStates = dynamics;
 
-    std::array<VkDescriptorSetLayout, 2> setLayouts = {cameraSetLayout, materialSetLayout};
+    std::array<VkDescriptorSetLayout, 3> setLayouts = {
+        cameraSetLayout, materialSetLayout, shadowSamplerSetLayout};
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layoutInfo.setLayoutCount = static_cast<uint32_t>(setLayouts.size());

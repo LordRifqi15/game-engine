@@ -3,6 +3,7 @@
 #include "renderer/vulkan/vk_device.h"
 #include "renderer/vulkan/vk_pipeline.h"
 #include "renderer/vulkan/vk_swapchain.h"
+#include "renderer/vulkan/shadow_pass.h"
 #include "renderer/vulkan/texture_cache.h"
 
 
@@ -38,6 +39,7 @@ struct FrameUBO {
     glm::vec4 lightDir;   // normalized direction light travels
     glm::vec4 lightColor; // rgb
     glm::vec4 params;     // x = ambient strength (reserved)
+    glm::mat4 lightVP;    // directional shadow cascade (single)
 };
 constexpr VkDeviceSize kCameraUboSize = sizeof(FrameUBO);
 
@@ -53,6 +55,54 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice& device, VulkanSwapchain& 
         cmd = device_.allocateCommandBuffer();
     }
     createCameraDescriptors();
+    createShadowSamplerSets();
+    shadowPass_ = new VulkanShadowPass(device_, swapchain_,
+                                       device_.cameraDescriptorLayout());
+
+    // Fill shadow sampler descriptors now that the pass owns view+sampler.
+    VkDevice dev = device_.handle();
+    for (uint32_t i = 0; i < kFramesInFlight; ++i) {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.sampler = shadowPass_->sampler();
+        imageInfo.imageView = shadowPass_->view();
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = shadowSamplerSets_[i];
+        write.dstBinding = 0;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.descriptorCount = 1;
+        write.pImageInfo = &imageInfo;
+        vkUpdateDescriptorSets(dev, 1, &write, 0, nullptr);
+    }
+}
+
+void VulkanCommandBuffer::createShadowSamplerSets() {
+    VkDevice dev = device_.handle();
+    VkDescriptorSetLayout layout = device_.shadowSamplerLayout();
+
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSize.descriptorCount = kFramesInFlight;
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.maxSets = kFramesInFlight;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    if (vkCreateDescriptorPool(dev, &poolInfo, nullptr, &shadowSamplerPool_) != VK_SUCCESS)
+        fatal("failed to create shadow sampler pool");
+
+    shadowSamplerSets_.resize(kFramesInFlight);
+    for (uint32_t i = 0; i < kFramesInFlight; ++i) {
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = shadowSamplerPool_;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &layout;
+        if (vkAllocateDescriptorSets(dev, &allocInfo, &shadowSamplerSets_[i]) != VK_SUCCESS)
+            fatal("failed to allocate shadow sampler set");
+    }
 }
 
 void VulkanCommandBuffer::createCameraDescriptors() {
@@ -103,13 +153,19 @@ void VulkanCommandBuffer::createCameraDescriptors() {
 }
 
 VulkanCommandBuffer::~VulkanCommandBuffer() {
+    delete shadowPass_;
     VkDevice dev = device_.handle();
     if (cameraDescriptorPool_ != VK_NULL_HANDLE)
         vkDestroyDescriptorPool(dev, cameraDescriptorPool_, nullptr);
     if (materialPool_ != VK_NULL_HANDLE) vkDestroyDescriptorPool(dev, materialPool_, nullptr);
+    if (shadowSamplerPool_ != VK_NULL_HANDLE)
+        vkDestroyDescriptorPool(dev, shadowSamplerPool_, nullptr);
 }
 
 VkDescriptorSet VulkanCommandBuffer::materialDescriptor(const Texture* tex) {
+    // Null texture -> 1x1 white fallback.
+    if (!tex) tex = textures_.createFromPixels("default_white", whitePixel, 1, 1);
+
     auto it = materialSets_.find(tex);
     if (it != materialSets_.end()) return it->second;
 
@@ -165,13 +221,24 @@ void VulkanCommandBuffer::recordFrame(uint32_t frameIndex, uint32_t imageIndex,
                                       const glm::vec3& cameraPos) {
     VkCommandBuffer cmd = buffers_[frameIndex];
 
+    // Light VP: ortho box around scene origin, eye placed back along light dir.
+    glm::vec3 dir = glm::normalize(light.direction);
+    glm::vec3 center{0.0f, 0.0f, 0.0f};
+    glm::vec3 eye = center - dir * 30.0f;
+    glm::mat4 lightView = glm::lookAt(eye, center, glm::vec3(0.0f, 1.0f, 0.0f));
+    // GLM ortho gives OpenGL-style z in [-1,1]; the viewport transform maps
+    // that onto Vulkan's [0,1] depth range automatically - no manual fix needed.
+    glm::mat4 lightProj = glm::ortho(-15.0f, 15.0f, -15.0f, 15.0f, 0.1f, 100.0f);
+    glm::mat4 lightVP = lightProj * lightView;
+
     // Per-frame camera + light -> UBO (persistently mapped, coherent).
     FrameUBO ubo{};
     ubo.viewProjection = viewProjection;
     ubo.cameraPos = glm::vec4(cameraPos, 1.0f);
-    ubo.lightDir = glm::vec4(glm::normalize(light.direction), 0.0f);
+    ubo.lightDir = glm::vec4(dir, 0.0f);
     ubo.lightColor = glm::vec4(light.color, 1.0f);
     ubo.params = glm::vec4(0.25f, 0.0f, 0.0f, 0.0f); // ambient
+    ubo.lightVP = lightVP;
 
     // Upload to the persistently mapped UBO for this frame-in-flight.
     std::memcpy(device_.mapUniform(frameIndex), &ubo, sizeof(FrameUBO));
@@ -181,6 +248,8 @@ void VulkanCommandBuffer::recordFrame(uint32_t frameIndex, uint32_t imageIndex,
     if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
         fatal("failed to begin recording command buffer");
     }
+
+    // DEBUG: shadow pass disabled
 
     std::array<VkClearValue, 2> clearValues{};
     clearValues[1].depthStencil = {1.0f, 0};
@@ -198,8 +267,12 @@ void VulkanCommandBuffer::recordFrame(uint32_t frameIndex, uint32_t imageIndex,
 
     vkCmdBeginRenderPass(cmd, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.handle());
+    // Bind camera (set 0). Material (set 1) is bound per batch below.
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.layout(),
                             0, 1, &descriptorSets_[frameIndex], 0, nullptr);
+    // Shadow map (set 2).
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.layout(),
+                            2, 1, &shadowSamplerSets_[frameIndex], 0, nullptr);
 
     VkViewport viewport{};
     viewport.width = static_cast<float>(swapchain_.extent().width);
@@ -239,6 +312,10 @@ void VulkanCommandBuffer::recordFrame(uint32_t frameIndex, uint32_t imageIndex,
     }
 
     vkCmdEndRenderPass(cmd);
+
+    // DEBUG: shadow pass begin/end ONLY (no draws)
+    shadowPass_->begin(cmd);
+    shadowPass_->end(cmd);
 
     if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
         fatal("failed to end recording command buffer");

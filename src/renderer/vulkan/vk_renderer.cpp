@@ -18,7 +18,8 @@ VkRenderer::VkRenderer(Window& window, VulkanInstance& vk)
     swapchain_ = new VulkanSwapchain(window_, vk_, *device_);
     pipeline_ = new VulkanPipeline(*device_, *swapchain_,
                                    device_->cameraDescriptorLayout(),
-                                   device_->materialDescriptorLayout());
+                                   device_->materialDescriptorLayout(),
+                                   device_->shadowSamplerLayout());
     textureCache_ = new TextureCache(*device_);
     commandBuffers_ =
         new VulkanCommandBuffer(*device_, *swapchain_, *pipeline_, *textureCache_);
@@ -61,9 +62,18 @@ void VkRenderer::drawFrame() {
     device_->flushRetiredScratch(currentFrame_);
 
     uint32_t imageIndex = 0;
+    static int framesRecorded = 0, framesSkipped = 0;
     if (!swapchain_->acquireOrRecreate(currentFrame_, imageIndex)) {
+        ++framesSkipped;
+        std::FILE* dbg = std::fopen("/tmp/frame_probe.txt", "w");
+        if (dbg) { fprintf(dbg, "recorded=%d skipped=%d", framesRecorded, framesSkipped); fclose(dbg); }
         pendingBatches_.clear();
         return; // recreated, skip this frame
+    }
+    ++framesRecorded;
+    {
+        std::FILE* dbg = std::fopen("/tmp/frame_probe.txt", "w");
+        if (dbg) { fprintf(dbg, "recorded=%d skipped=%d", framesRecorded, framesSkipped); fclose(dbg); }
     }
 
     device_->resetFence(currentFrame_);

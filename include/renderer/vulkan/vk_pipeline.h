@@ -17,7 +17,8 @@ public:
     // cameraSetLayout: descriptor set layout bound at set 0 (camera UBO).
     VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swapchain,
                    VkDescriptorSetLayout cameraSetLayout,
-                   VkDescriptorSetLayout materialSetLayout);
+                   VkDescriptorSetLayout materialSetLayout,
+                   VkDescriptorSetLayout shadowSamplerSetLayout);
     ~VulkanPipeline() override;
 
     VulkanPipeline(const VulkanPipeline&) = delete;

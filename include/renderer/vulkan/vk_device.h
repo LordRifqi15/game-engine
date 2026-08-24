@@ -69,6 +69,9 @@ public:
     // Material texture combined-image-sampler layout (set 1, binding 0, fragment).
     void createMaterialDescriptorLayout();
     VkDescriptorSetLayout materialDescriptorLayout() const { return materialDescriptorLayout_; }
+    // Shadow map combined-image-sampler layout (set 2, binding 0, fragment).
+    void createShadowSamplerLayout();
+    VkDescriptorSetLayout shadowSamplerLayout() const { return shadowSamplerLayout_; }
 
     // Persistent host-visible buffer (for camera UBO). One per frame-in-flight.
     void createUniformBuffers(uint32_t frameCount, VkDeviceSize size);
@@ -116,6 +119,7 @@ private:
 
     VkDescriptorSetLayout cameraDescriptorLayout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout materialDescriptorLayout_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout shadowSamplerLayout_ = VK_NULL_HANDLE;
 };
 
 } // namespace engine

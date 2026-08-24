@@ -8,6 +8,7 @@
 #include "core/mesh.h"
 
 #include "renderer/api/render_command_buffer.h"
+#include "renderer/vulkan/shadow_pass.h"
 
 #include <array>
 #include <unordered_map>
@@ -42,6 +43,7 @@ public:
 
 private:
     void createCameraDescriptors();
+    void createShadowSamplerSets();
     // Allocates (and caches) a set 1 descriptor for the texture.
     VkDescriptorSet materialDescriptor(const Texture* tex);
 
@@ -55,6 +57,11 @@ private:
     // Camera UBO descriptor pool + sets (layout owned by VulkanDevice).
     VkDescriptorPool cameraDescriptorPool_ = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> descriptorSets_; // one per frame in flight
+
+    // Shadow map sampler sets (set 2), layout owned by device.
+    std::vector<VkDescriptorSet> shadowSamplerSets_;
+    VkDescriptorPool shadowSamplerPool_ = VK_NULL_HANDLE;
+    VulkanShadowPass* shadowPass_ = nullptr;
 
     // Material texture descriptors (set 1): one set per unique texture.
     VkDescriptorPool materialPool_ = VK_NULL_HANDLE;

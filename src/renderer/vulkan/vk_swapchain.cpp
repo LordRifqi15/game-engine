@@ -57,14 +57,9 @@ void VulkanSwapchain::create() {
         }
     }
 
-    // Mailbox when available, else FIFO (always supported).
+    // FIFO (vsync): required for correct Wayland presentation; MAILBOX
+    // presented frames without ever reaching the display on this setup.
     VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
-    for (auto m : support.presentModes) {
-        if (m == VK_PRESENT_MODE_MAILBOX_KHR) {
-            presentMode = m;
-            break;
-        }
-    }
 
     VkExtent2D extent = support.caps.currentExtent;
     if (extent.width == std::numeric_limits<uint32_t>::max()) {

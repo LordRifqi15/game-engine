@@ -83,6 +83,7 @@ VulkanDevice::VulkanDevice(VulkanInstance& vk)
 
     createCameraDescriptorLayout();
     createMaterialDescriptorLayout();
+    createShadowSamplerLayout();
     createCommandPool();
 }
 
@@ -90,6 +91,8 @@ VulkanDevice::~VulkanDevice() {
     for (uint32_t i = 0; i < 2; ++i) flushRetiredScratch(i);
     if (materialDescriptorLayout_ != VK_NULL_HANDLE)
         vkDestroyDescriptorSetLayout(device_, materialDescriptorLayout_, nullptr);
+    if (shadowSamplerLayout_ != VK_NULL_HANDLE)
+        vkDestroyDescriptorSetLayout(device_, shadowSamplerLayout_, nullptr);
     if (cameraDescriptorLayout_ != VK_NULL_HANDLE) {
         vkDestroyDescriptorSetLayout(device_, cameraDescriptorLayout_, nullptr);
     }
@@ -214,6 +217,22 @@ void VulkanDevice::createMaterialDescriptorLayout() {
     layoutInfo.pBindings = &binding;
     if (vkCreateDescriptorSetLayout(device_, &layoutInfo, nullptr, &materialDescriptorLayout_) != VK_SUCCESS)
         fatal("failed to create material descriptor set layout");
+}
+
+void VulkanDevice::createShadowSamplerLayout() {
+    VkDescriptorSetLayoutBinding binding{};
+    binding.binding = 0;
+    binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    binding.descriptorCount = 1;
+    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &binding;
+    if (vkCreateDescriptorSetLayout(device_, &layoutInfo, nullptr,
+                                    &shadowSamplerLayout_) != VK_SUCCESS)
+        fatal("failed to create shadow sampler set layout");
 }
 
 void VulkanDevice::createUniformBuffers(uint32_t frameCount, VkDeviceSize size) {
