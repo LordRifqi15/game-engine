@@ -32,7 +32,8 @@ public:
     void begin(VkCommandBuffer cmd, uint32_t cascade);
     // Draws one batch (mesh + instances) — same instance buffers as main pass.
     void drawBatch(VkCommandBuffer cmd, const Mesh& mesh,
-                   uint32_t instanceCount, const glm::mat4& lightVP);
+                   uint32_t instanceCount, const glm::mat4& lightVP,
+                   VkBuffer instanceBuffer);
     // Ends the render pass.
     void end(VkCommandBuffer cmd);
 

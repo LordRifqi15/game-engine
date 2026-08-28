@@ -27,10 +27,11 @@ public:
     // Resets this frame's buffer, uploads instance data, records one instanced
     // draw per batch for imageIndex. viewProjection/light go to the frame UBO.
     virtual void recordFrame(uint32_t frameIndex, uint32_t imageIndex,
-                             const std::vector<PendingBatch>& batches,
-                             const glm::mat4& viewProjection,
-                             const DirectionalLight& light,
-                             const glm::vec3& cameraPos) = 0;
+                            const std::vector<PendingBatch>& batches,
+                            const std::vector<InstanceData>& instances,
+                            const glm::mat4& viewProjection,
+                            const DirectionalLight& light,
+                            const glm::vec3& cameraPos) = 0;
 };
 
 } // namespace engine

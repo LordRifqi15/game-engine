@@ -87,6 +87,8 @@ VulkanDevice::VulkanDevice(VulkanInstance& vk)
     createSet3Layout();
     createShadowSamplerLayout();
     createCommandPool();
+    createUniformBuffers(2, 1024);
+    createFrameFences(2);
 }
 
 VulkanDevice::~VulkanDevice() {

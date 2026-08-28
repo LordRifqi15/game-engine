@@ -23,8 +23,8 @@ Engine::Engine(Window& window)
     renderer_ = new Renderer(window_);
     scene_ = new Scene();
 
-        // Streaming world: shared triangle mesh, entities created per chunk.
-    triangleMesh_ = new Mesh(mesh_primitives::triangle());
+        // Streaming world: shared quad mesh for ground chunks, rotated to XZ plane.
+    triangleMesh_ = new Mesh(mesh_primitives::quad());
     world_ = new World(scene_->registry(), triangleMesh_, 2, 16.0f);
 
     Input::init(window_);

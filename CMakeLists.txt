@@ -35,6 +35,7 @@ add_executable(engine
     src/renderer/vulkan/vk_swapchain.cpp
     src/renderer/vulkan/vk_pipeline.cpp
     src/renderer/vulkan/vk_command_buffer.cpp
+    src/renderer/vulkan/gpu_occlusion.cpp
     src/renderer/vulkan/texture_cache.cpp
     src/renderer/vulkan/environment.cpp
     src/renderer/vulkan/shadow_pass.cpp
@@ -48,18 +49,22 @@ set(SHADER_SRC
     shaders/basic.frag
     shaders/shadow.vert
     shaders/shadow.frag
+    shaders/prepass.frag
     shaders/skybox.vert
     shaders/skybox.frag
     shaders/cull.comp
+    shaders/hiz.comp
 )
 set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/basic.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/basic.frag.spv
     ${CMAKE_BINARY_DIR}/shaders/shadow.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/shadow.frag.spv
+    ${CMAKE_BINARY_DIR}/shaders/prepass.frag.spv
     ${CMAKE_BINARY_DIR}/shaders/skybox.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/skybox.frag.spv
     ${CMAKE_BINARY_DIR}/shaders/cull.comp.spv
+    ${CMAKE_BINARY_DIR}/shaders/hiz.comp.spv
 )
 
 add_custom_command(
@@ -72,6 +77,8 @@ add_custom_command(
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/skybox.vert -o ${CMAKE_BINARY_DIR}/shaders/skybox.vert.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/skybox.frag -o ${CMAKE_BINARY_DIR}/shaders/skybox.frag.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/cull.comp -o ${CMAKE_BINARY_DIR}/shaders/cull.comp.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/prepass.frag -o ${CMAKE_BINARY_DIR}/shaders/prepass.frag.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/hiz.comp -o ${CMAKE_BINARY_DIR}/shaders/hiz.comp.spv
     DEPENDS ${SHADER_SRC}
     COMMENT "Compiling shaders"
 )

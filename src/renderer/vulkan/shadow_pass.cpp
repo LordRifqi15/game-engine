@@ -218,16 +218,17 @@ void VulkanShadowPass::begin(VkCommandBuffer cmd, uint32_t cascade) {
 }
 
 void VulkanShadowPass::drawBatch(VkCommandBuffer cmd, const Mesh& mesh,
-                                 uint32_t instanceCount, const glm::mat4& lightVP) {
+                                 uint32_t instanceCount, const glm::mat4& lightVP,
+                                 VkBuffer instanceBuffer) {
     if (instanceCount == 0 || mesh.indices.empty() || mesh.vertices.empty()) return;
 
     vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(glm::mat4), &lightVP);
 
     VkBuffer vertexBuffer = device_.scratchVertexBuffer(mesh.vertices);
-    VkBuffer buffers[] = {vertexBuffer};
-    VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(cmd, 0, 1, buffers, offsets);
+    VkBuffer buffers[] = {vertexBuffer, instanceBuffer};
+    VkDeviceSize offsets[] = {0, 0};
+    vkCmdBindVertexBuffers(cmd, 0, 2, buffers, offsets);
 
     VkBuffer indexBuffer = device_.scratchIndexBuffer(mesh.indices);
     vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);

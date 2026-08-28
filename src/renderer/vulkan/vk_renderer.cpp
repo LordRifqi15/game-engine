@@ -90,7 +90,8 @@ void VkRenderer::drawFrame() {
     device_->resetFence(currentFrame_);
 
     commandBuffers_->recordFrame(currentFrame_, imageIndex, pendingBatches_,
-                           viewProjection_, light_, cameraPos_);
+                                 allInstances_, viewProjection_, light_,
+                                 cameraPos_);
 
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 

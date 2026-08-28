@@ -1,5 +1,13 @@
 #version 450
 
+// GPU culling: frustum test + Hi-Z occlusion test per instance.
+// Visible instances are compacted into the output buffer and per-batch
+// indirect draw commands get their instanceCount updated atomically.
+// Output placement mirrors input layout: batch i's visible instances are
+// written at ranges[i].x (its input start), so firstInstance stays static.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
 layout(set = 0, binding = 0) readonly buffer InputInstances {
     vec4 data[];
 } inputInstances;
@@ -8,24 +16,30 @@ layout(set = 0, binding = 1) buffer OutputInstances {
     vec4 data[];
 } outputInstances;
 
+// One VkDrawIndexedIndirectCommand per batch (20 bytes packed as 5 uints).
 layout(set = 0, binding = 2) buffer DrawCommands {
-    uint indexCount;
-    uint instanceCount;
-    uint firstIndex;
-    uint vertexOffset;
-    uint firstInstance;
-} cmds;
+    uint cmds[];
+} drawCmds;
+
+layout(set = 0, binding = 3) uniform sampler2D hizSampler;
+
+// ranges[i] = (firstInstance offset in instance array, unused)
+layout(set = 0, binding = 4) readonly buffer BatchRanges {
+    uvec2 ranges[];
+} batchRanges;
 
 layout(push_constant) uniform Push {
-    mat4 viewProjection;
-    vec4 plane0;
-    vec4 plane1;
-    vec4 plane2;
-    vec4 plane3;
-    vec4 plane4;
-    vec4 plane5;
-    uint instanceCount;
-    uint meshIndexCount;
+    mat4 viewProjection; // 0
+    vec4 plane0;         // 64
+    vec4 plane1;         // 80
+    vec4 plane2;         // 96
+    vec4 plane3;         // 112
+    vec4 plane4;         // 128
+    vec4 plane5;         // 144
+    uint instanceCount;  // 160
+    uint batchCount;     // 164
+    float projScaleB;    // 168: B = 2fn/(f-n), ndcZ(w) = A - B/w
+    float depthBias;     // 172
 } pc;
 
 void main() {
@@ -53,10 +67,31 @@ void main() {
     if (visible && (dot(pc.plane4.xyz, center) + pc.plane4.w < -radius)) visible = false;
     if (visible && (dot(pc.plane5.xyz, center) + pc.plane5.w < -radius)) visible = false;
 
+    // Hi-Z occlusion test: conservative (max-downsampled depth, front-of-sphere
+    // depth, positive bias) so visible geometry is never dropped.
     if (visible) {
+        vec4 clip = pc.viewProjection * vec4(center, 1.0);
+        if (clip.w > 0.0) {
+            vec2 uv = (clip.xy / clip.w) * 0.5 + 0.5;
+            float w = max(clip.w, 0.001);
+            // Nearest point of the bounding sphere in NDC z.
+            float frontNdcZ = clip.z - pc.projScaleB / (w * w) * radius;
+            float hizNdcZ = texture(hizSampler, uv).r * 2.0 - 1.0;
+            if (frontNdcZ > hizNdcZ + pc.depthBias) visible = false;
+        }
+    }
+
+    if (visible) {
+        // Find owning batch (instances are laid out batch-consecutively).
+        uint drawId = 0;
+        for (uint b = 0; b + 1 < pc.batchCount; ++b) {
+            if (idx >= batchRanges.ranges[b + 1].x) drawId = b + 1;
+        }
+
+        // Atomic append within the batch's output region.
+        uint slot = atomicAdd(drawCmds.cmds[drawId * 5 + 1], 1);
+        uint outBase = (batchRanges.ranges[drawId].x + slot) * 6;
         for (int v = 0; v < 6; ++v)
-            outputInstances.data[cmds.instanceCount * 6 + v] =
-                inputInstances.data[base + v];
-        atomicAdd(cmds.instanceCount, 1);
+            outputInstances.data[outBase + v] = inputInstances.data[base + v];
     }
 }

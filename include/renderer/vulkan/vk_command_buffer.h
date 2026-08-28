@@ -23,7 +23,7 @@ class VulkanSwapchain;
 class VulkanPipeline;
 class TextureCache;
 class Texture;
-
+class VulkanGpuOcclusion;
 class VulkanCommandBuffer final : public RenderCommandBuffer {
 public:
     VulkanCommandBuffer(VulkanDevice& device, VulkanSwapchain& swapchain,
@@ -33,6 +33,7 @@ public:
     // RenderCommandBuffer: viewProjection written to the frame's camera UBO.
     void recordFrame(uint32_t frameIndex, uint32_t imageIndex,
                      const std::vector<PendingBatch>& batches,
+                     const std::vector<InstanceData>& instances,
                      const glm::mat4& viewProjection,
                      const DirectionalLight& light,
                      const glm::vec3& cameraPos) override;
@@ -41,11 +42,15 @@ public:
     VkCommandBuffer handle(uint32_t frameIndex) const { return buffers_[frameIndex]; }
 
 
+    static constexpr uint32_t kMaxInstances = 65536;
 
-private:
+ private:
     void createCameraDescriptors();
     void createShadowSamplerSets();
     void createIndirectBuffer();
+    void createInstanceBuffers();
+    void createCullPipeline();
+    void createHizPipeline();
     // Allocates (and caches) a set 1 descriptor for the texture.
     VkDescriptorSet materialDescriptor(const Texture* tex);
 
@@ -65,6 +70,7 @@ private:
     VkDescriptorPool shadowSamplerPool_ = VK_NULL_HANDLE;
     VulkanShadowPass* shadowPass_ = nullptr;
     VulkanEnvironment* environment_ = nullptr;
+    VulkanGpuOcclusion* occlusion_ = nullptr;
 
     // Material texture descriptors (set 1): one set per unique texture.
     VkDescriptorPool materialPool_ = VK_NULL_HANDLE;
@@ -90,6 +96,18 @@ private:
     void* instanceInMapped_ = nullptr;
     VkBuffer instanceOutBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory instanceOutMemory_ = VK_NULL_HANDLE;
+
+    // Hi-Z downsample compute (hiz.comp): depth -> 512^2 R32F max-reduced.
+    VkPipeline hizPipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout hizLayout_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout hizSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorPool hizPool_ = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSet> hizSets_; // per frame in flight
+
+    // Batch start offsets (host-visible, per frame): uvec2 per batch.
+    VkBuffer batchRangeBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory batchRangeMemory_ = VK_NULL_HANDLE;
+    void* batchRangeMapped_ = nullptr;
 
 };
 

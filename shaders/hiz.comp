@@ -1,0 +1,26 @@
+#version 450
+
+// Hi-Z downsample: each workgroup thread covers one Hi-Z texel and takes the
+// MAX (farthest) depth of the source region it covers. Max is the conservative
+// choice: an instance is culled only if its nearest point is behind the
+// farthest surface in the region, so visible geometry is never dropped.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D depthTex;
+layout(set = 0, binding = 1, r32f) uniform writeonly image2D hizTex;
+
+layout(push_constant) uniform Push {
+    ivec2 srcSize; // prepass depth dimensions
+} pc;
+
+void main() {
+    ivec2 dst = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 lo = dst * pc.srcSize / 512;
+    ivec2 hi = (dst + 1) * pc.srcSize / 512;
+    float m = 1.0;
+    for (int y = lo.y; y < max(hi.y, lo.y + 1); ++y)
+        for (int x = lo.x; x < max(hi.x, lo.x + 1); ++x)
+            m = max(m, texelFetch(depthTex, ivec2(x, y), 0).r);
+    imageStore(hizTex, dst, vec4(m));
+}

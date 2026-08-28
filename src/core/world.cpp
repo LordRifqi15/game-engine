@@ -1,5 +1,8 @@
 #include "core/world.h"
 
+#include "core/material_component.h"
+#include "core/mesh_component.h"
+#include <glm/gtc/quaternion.hpp>
 namespace engine {
 
 World::World(Registry& registry, Mesh* groundMesh, int loadRadius, float chunkSize)
@@ -44,9 +47,17 @@ void World::loadChunk(ChunkCoord coord) {
     TransformComponent t;
     t.position = {coord.x * chunkSize_ + chunkSize_ * 0.5f, 0.0f,
                   coord.z * chunkSize_ + chunkSize_ * 0.5f};
+    t.rotation = glm::vec3(glm::radians(-90.0f), 0.0f, 0.0f);
+    t.scale = glm::vec3(chunkSize_, chunkSize_, 1.0f);
     registry_.addComponent<TransformComponent>(e, t);
-    // Mesh assignment: caller sets via setMesh(e) or we use a default.
-    // For now, store entity and let Engine assign mesh.
+    MeshComponent mc;
+    mc.mesh = groundMesh_;
+    registry_.addComponent<MeshComponent>(e, mc);
+    MaterialComponent mat;
+    mat.material.baseColor = glm::vec4(0.6f, 0.6f, 0.6f, 1.0f);
+    mat.material.metallic = 0.0f;
+    mat.material.roughness = 0.8f;
+    registry_.addComponent<MaterialComponent>(e, mat);
     chunk.entities.push_back(e);
 }
 
