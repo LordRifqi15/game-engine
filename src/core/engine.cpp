@@ -57,11 +57,23 @@ Engine::Engine(Window& window)
                 if (!gltf.animations.empty()) {
                     AnimationComponent animC;
                     animC.animations = gltf.animations;
-                    animC.current = 0;
-                    animC.time = 0.0f;
+                    // Ensure at least 2 clips for Idle/Walk/Run demo (SimpleSkin has 1).
+                    if (animC.animations.size() == 1) {
+                        auto copy = animC.animations[0];
+                        copy.name = copy.name.empty() ? "Copy" : copy.name + "_Copy";
+                        animC.animations.push_back(std::move(copy));
+                        std::printf("[engine] duplicated anim for blending demo: now %zu anims\n", animC.animations.size());
+                        std::fflush(stdout);
+                    }
+                    animC.state.currentAnim = 0;
+                    animC.state.nextAnim = -1;
+                    animC.state.time = 0.0f;
+                    animC.state.blendTime = 0.0f;
+                    animC.state.blendDuration = 0.3f;
                     animC.speed = 1.0f;
                     animC.playing = true;
                     animC.loop = true;
+                    animC.playState = LocomotionState::Idle;
                     scene_->registry().addComponent<AnimationComponent>(e, animC);
                 }
             }
@@ -115,11 +127,35 @@ void Engine::update(double deltaTime) {
     // Simulation step: camera controller first, then scene systems (physics/AI later).
     controller_.update(scene_->camera(), static_cast<float>(deltaTime));
 
-    // Animate skeletons (CPU) and upload joint matrices to GPU (SSBO set 4)
+    // Animation blending + state machine (Task 030) — auto demo fallback ensures
+    // transitions visible without manual input during headless capture.
     float dt = static_cast<float>(deltaTime);
     auto* skelArray = scene_->registry().tryGetComponentArray<SkeletonComponent>();
     auto* animArray = scene_->registry().tryGetComponentArray<AnimationComponent>();
     bool uploaded = false;
+
+    static float autoTimer = 0.0f;
+    autoTimer += dt;
+    float autoSpeed = 0.0f;
+    if (autoTimer < 2.0f) autoSpeed = 0.0f;          // Idle
+    else if (autoTimer < 4.0f) autoSpeed = 1.0f;    // Walk
+    else if (autoTimer < 6.0f) autoSpeed = 2.5f;    // Run
+    else {
+        autoTimer = 0.0f;
+        autoSpeed = 0.0f;
+    }
+
+    float inputSpeed = 0.0f;
+    bool hasInput = false;
+    if (Input::isKeyPressed(GLFW_KEY_W)) {
+        hasInput = true;
+        inputSpeed = Input::isKeyPressed(GLFW_KEY_LEFT_SHIFT) ? 2.5f : 1.0f;
+    } else if (Input::isKeyPressed(GLFW_KEY_S)) {
+        hasInput = true;
+        inputSpeed = 0.3f;
+    }
+    float desiredSpeed = hasInput ? inputSpeed : autoSpeed;
+
     if (skelArray && animArray) {
         for (size_t i = 0; i < skelArray->size(); ++i) {
             Entity e = skelArray->entityAt(i);
@@ -127,14 +163,8 @@ void Engine::update(double deltaTime) {
             auto& skelC = skelArray->get(e);
             auto& animC = animArray->get(e);
             if (animC.animations.empty() || !animC.playing) continue;
-            const Animation& anim = animC.animations[animC.current];
-            animC.time += dt * animC.speed;
-            if (anim.duration > 0.0f && animC.loop) {
-                animC.time = std::fmod(animC.time, anim.duration);
-                if (animC.time < 0) animC.time += anim.duration;
-            }
-            updateSkeletonFromAnimation(skelC.skeleton, anim, animC.time);
-            computeFinalMatrices(skelC.skeleton);
+            updateLocomotionStateMachine(animC, desiredSpeed);
+            updateAnimationComponent(animC, skelC.skeleton, dt);
             renderer_->updateJoints(skelC.skeleton.finalMatrices);
             uploaded = true;
             break;

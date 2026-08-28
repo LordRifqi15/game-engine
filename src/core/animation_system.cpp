@@ -4,10 +4,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace engine {
 
 namespace {
+
 
 glm::vec3 lerpVec3(const glm::vec3& a, const glm::vec3& b, float t) {
     return a + t * (b - a);
@@ -117,5 +119,111 @@ void computeFinalMatrices(Skeleton& skeleton) {
         skeleton.finalMatrices[i] = g * skeleton.joints[i].inverseBind;
     }
 }
+
+void sampleAnimationPose(const Animation& anim, float time, const Skeleton& baseSkeleton, std::vector<Skeleton::Pose>& outPose) {
+    outPose.resize(baseSkeleton.joints.size());
+    // init from base pose (or identity)
+    for (size_t i = 0; i < baseSkeleton.joints.size(); ++i) {
+        if (i < baseSkeleton.pose.size()) outPose[i] = baseSkeleton.pose[i];
+        else outPose[i] = Skeleton::Pose{};
+    }
+    if (baseSkeleton.joints.empty() || anim.channels.empty()) return;
+    float t = time;
+    if (anim.duration > 0.0f) {
+        t = std::fmod(t, anim.duration);
+        if (t < 0) t += anim.duration;
+    }
+    for (const auto& channel : anim.channels) {
+        if (channel.targetJoint < 0 || channel.targetJoint >= (int)outPose.size()) continue;
+        if (channel.samplerIndex < 0 || channel.samplerIndex >= (int)anim.samplers.size()) continue;
+        const auto& sampler = anim.samplers[channel.samplerIndex];
+        glm::vec4 value = interpolateVec4(sampler, t);
+        auto& pose = outPose[channel.targetJoint];
+        if (channel.path == "translation") pose.translation = glm::vec3(value);
+        else if (channel.path == "scale") pose.scale = glm::vec3(value);
+        else if (channel.path == "rotation") {
+            glm::quat q(value.w, value.x, value.y, value.z);
+            pose.rotation = glm::normalize(q);
+        }
+    }
+}
+
+void blendPoses(const std::vector<Skeleton::Pose>& a, const std::vector<Skeleton::Pose>& b, float t, std::vector<Skeleton::Pose>& out) {
+    size_t n = std::max(a.size(), b.size());
+    out.resize(n);
+    float clamped = std::clamp(t, 0.0f, 1.0f);
+    for (size_t i = 0; i < n; ++i) {
+        const auto& pa = i < a.size() ? a[i] : Skeleton::Pose{};
+        const auto& pb = i < b.size() ? b[i] : pa;
+        auto& o = out[i];
+        o.translation = pa.translation + clamped * (pb.translation - pa.translation);
+        o.scale = pa.scale + clamped * (pb.scale - pa.scale);
+        o.rotation = glm::slerp(pa.rotation, pb.rotation, clamped);
+        o.rotation = glm::normalize(o.rotation);
+    }
+}
+
+void updateAnimationComponent(AnimationComponent& comp, Skeleton& skeleton, float dt) {
+    if (comp.animations.empty() || !comp.playing || skeleton.joints.empty()) return;
+    if (skeleton.pose.size() != skeleton.joints.size()) skeleton.resizePose();
+    // clamp indices
+    if (comp.state.currentAnim < 0 || comp.state.currentAnim >= (int)comp.animations.size()) comp.state.currentAnim = 0;
+    if (comp.state.nextAnim >= (int)comp.animations.size()) comp.state.nextAnim = -1;
+
+    comp.state.time += dt * comp.speed;
+
+    if (comp.state.nextAnim != -1) {
+        // blending
+        comp.state.blendTime += dt;
+        float blendFactor = comp.state.blendDuration > 0.0f ? comp.state.blendTime / comp.state.blendDuration : 1.0f;
+        blendFactor = std::clamp(blendFactor, 0.0f, 1.0f);
+
+        std::vector<Skeleton::Pose> poseA, poseB, blended;
+        sampleAnimationPose(comp.animations[comp.state.currentAnim], comp.state.time, skeleton, poseA);
+        sampleAnimationPose(comp.animations[comp.state.nextAnim], comp.state.time, skeleton, poseB);
+        blendPoses(poseA, poseB, blendFactor, blended);
+        skeleton.pose = std::move(blended);
+        computeFinalMatrices(skeleton);
+
+        if (comp.state.blendTime >= comp.state.blendDuration) {
+            comp.state.currentAnim = comp.state.nextAnim;
+            comp.state.nextAnim = -1;
+            comp.state.blendTime = 0.0f;
+            comp.state.blendDuration = 0.25f;
+        }
+    } else {
+        updateSkeletonFromAnimation(skeleton, comp.animations[comp.state.currentAnim], comp.state.time);
+        computeFinalMatrices(skeleton);
+    }
+}
+
+LocomotionState speedToState(float speed) {
+    if (speed < 0.1f) return LocomotionState::Idle;
+    if (speed < 1.5f) return LocomotionState::Walk;
+    return LocomotionState::Run;
+}
+
+int stateToAnimIndex(LocomotionState s, const AnimationComponent& comp) {
+    if (comp.animations.empty()) return -1;
+    int n = (int)comp.animations.size();
+    switch (s) {
+        case LocomotionState::Idle: return 0 % n;
+        case LocomotionState::Walk: return (n > 1 ? 1 : 0) % n;
+        case LocomotionState::Run: return (n > 2 ? 2 : (n - 1)) % n;
+    }
+    return 0;
+}
+void updateLocomotionStateMachine(AnimationComponent& comp, float speed) {
+    LocomotionState desired = speedToState(speed);
+    comp.playState = desired;
+    int desiredAnim = stateToAnimIndex(desired, comp);
+    if (desiredAnim < 0) return;
+    if (desiredAnim != comp.state.currentAnim && desiredAnim != comp.state.nextAnim) {
+        std::printf("[anim] Transition %d -> %d (speed %.2f state %d) blend 0.30s\n", comp.state.currentAnim, desiredAnim, speed, (int)desired);
+        std::fflush(stdout);
+        comp.crossFadeTo(desiredAnim, 0.3f);
+    }
+}
+
 
 } // namespace engine

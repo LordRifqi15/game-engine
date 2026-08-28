@@ -12,4 +12,14 @@ void updateSkeletonFromAnimation(Skeleton& skeleton, const Animation& anim, floa
 // Assumes skeleton.pose already contains local TRS.
 void computeFinalMatrices(Skeleton& skeleton);
 
+// Task 030: blending
+void sampleAnimationPose(const Animation& anim, float time, const Skeleton& baseSkeleton, std::vector<Skeleton::Pose>& outPose);
+void blendPoses(const std::vector<Skeleton::Pose>& a, const std::vector<Skeleton::Pose>& b, float t, std::vector<Skeleton::Pose>& out);
+void updateAnimationComponent(AnimationComponent& comp, Skeleton& skeleton, float dt);
+
+// State machine helpers (Idle→Walk→Run→Idle)
+LocomotionState speedToState(float speed);
+int stateToAnimIndex(LocomotionState s, const AnimationComponent& comp);
+void updateLocomotionStateMachine(AnimationComponent& comp, float speed);
+
 } // namespace engine
