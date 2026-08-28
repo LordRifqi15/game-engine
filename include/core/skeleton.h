@@ -3,10 +3,13 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace engine {
+
+struct AnimGraph; // forward for data-driven graph (Task 029)
 
 // Max joints per skeleton (SSBO size, keep under UBO limit if used).
 constexpr uint32_t kMaxJoints = 128;
@@ -79,11 +82,12 @@ struct SkeletonComponent {
 
 struct AnimationComponent {
     std::vector<Animation> animations;
-    AnimState state;
+    AnimState state; // legacy (Task 030) kept for compat, not used by graph
     float speed = 1.0f;
     bool playing = true;
     bool loop = true;
     LocomotionState playState = LocomotionState::Idle;
+    std::shared_ptr<AnimGraph> graph; // Task 029: data-driven pose tree
 
     void crossFadeTo(int next, float duration) {
         if (next < 0 || next >= (int)animations.size()) return;

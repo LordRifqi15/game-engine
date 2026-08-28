@@ -1,10 +1,11 @@
 #include "core/engine.h"
 
+#include "core/anim_graph.h"
+#include "core/animation_system.h"
 #include "core/bounds_component.h"
 #include "core/mesh.h"
 #include "core/gltf_loader.h"
 #include "core/skeleton.h"
-#include "core/animation_system.h"
 #include "core/mesh_component.h"
 #include "core/material_component.h"
 #include "core/transform_component.h"
@@ -57,7 +58,6 @@ Engine::Engine(Window& window)
                 if (!gltf.animations.empty()) {
                     AnimationComponent animC;
                     animC.animations = gltf.animations;
-                    // Ensure at least 2 clips for Idle/Walk/Run demo (SimpleSkin has 1).
                     if (animC.animations.size() == 1) {
                         auto copy = animC.animations[0];
                         copy.name = copy.name.empty() ? "Copy" : copy.name + "_Copy";
@@ -74,7 +74,10 @@ Engine::Engine(Window& window)
                     animC.playing = true;
                     animC.loop = true;
                     animC.playState = LocomotionState::Idle;
-                    scene_->registry().addComponent<AnimationComponent>(e, animC);
+                    animC.graph = makeLocomotionGraph(animC.animations, skelC.skeleton);
+                    std::printf("[graph] built locomotion graph: %zu clips root %p speed %p\n", animC.animations.size(), (void*)animC.graph->root, (void*)&animC.graph->speed);
+                    std::fflush(stdout);
+                    scene_->registry().addComponent<AnimationComponent>(e, std::move(animC));
                 }
             }
         } else {
@@ -163,8 +166,15 @@ void Engine::update(double deltaTime) {
             auto& skelC = skelArray->get(e);
             auto& animC = animArray->get(e);
             if (animC.animations.empty() || !animC.playing) continue;
-            updateLocomotionStateMachine(animC, desiredSpeed);
-            updateAnimationComponent(animC, skelC.skeleton, dt);
+            // Task 029: data-driven graph (no hardcoded state logic)
+            if (animC.graph) {
+                animC.graph->setSpeed(desiredSpeed);
+                animC.graph->evaluateInto(skelC.skeleton, dt);
+            } else {
+                // No graph: fallback to direct clip 0 (should not happen after graph build)
+                updateSkeletonFromAnimation(skelC.skeleton, animC.animations[0], animC.state.time + dt);
+                computeFinalMatrices(skelC.skeleton);
+            }
             renderer_->updateJoints(skelC.skeleton.finalMatrices);
             uploaded = true;
             break;

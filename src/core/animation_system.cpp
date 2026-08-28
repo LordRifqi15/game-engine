@@ -197,33 +197,4 @@ void updateAnimationComponent(AnimationComponent& comp, Skeleton& skeleton, floa
     }
 }
 
-LocomotionState speedToState(float speed) {
-    if (speed < 0.1f) return LocomotionState::Idle;
-    if (speed < 1.5f) return LocomotionState::Walk;
-    return LocomotionState::Run;
-}
-
-int stateToAnimIndex(LocomotionState s, const AnimationComponent& comp) {
-    if (comp.animations.empty()) return -1;
-    int n = (int)comp.animations.size();
-    switch (s) {
-        case LocomotionState::Idle: return 0 % n;
-        case LocomotionState::Walk: return (n > 1 ? 1 : 0) % n;
-        case LocomotionState::Run: return (n > 2 ? 2 : (n - 1)) % n;
-    }
-    return 0;
-}
-void updateLocomotionStateMachine(AnimationComponent& comp, float speed) {
-    LocomotionState desired = speedToState(speed);
-    comp.playState = desired;
-    int desiredAnim = stateToAnimIndex(desired, comp);
-    if (desiredAnim < 0) return;
-    if (desiredAnim != comp.state.currentAnim && desiredAnim != comp.state.nextAnim) {
-        std::printf("[anim] Transition %d -> %d (speed %.2f state %d) blend 0.30s\n", comp.state.currentAnim, desiredAnim, speed, (int)desired);
-        std::fflush(stdout);
-        comp.crossFadeTo(desiredAnim, 0.3f);
-    }
-}
-
-
 } // namespace engine
