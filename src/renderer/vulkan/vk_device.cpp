@@ -86,6 +86,7 @@ VulkanDevice::VulkanDevice(VulkanInstance& vk)
     createMaterialDescriptorLayout();
     createSet3Layout();
     createShadowSamplerLayout();
+    createSkinningDescriptorLayout();
     createCommandPool();
     createUniformBuffers(2, 1024);
     createFrameFences(2);
@@ -93,6 +94,8 @@ VulkanDevice::VulkanDevice(VulkanInstance& vk)
 
 VulkanDevice::~VulkanDevice() {
     for (uint32_t i = 0; i < 2; ++i) flushRetiredScratch(i);
+    if (skinningDescriptorLayout_ != VK_NULL_HANDLE)
+        vkDestroyDescriptorSetLayout(device_, skinningDescriptorLayout_, nullptr);
     if (materialDescriptorLayout_ != VK_NULL_HANDLE)
         vkDestroyDescriptorSetLayout(device_, materialDescriptorLayout_, nullptr);
     if (shadowSamplerLayout_ != VK_NULL_HANDLE)
@@ -254,6 +257,20 @@ void VulkanDevice::createShadowSamplerLayout() {
     if (vkCreateDescriptorSetLayout(device_, &layoutInfo, nullptr,
                                     &shadowSamplerLayout_) != VK_SUCCESS)
         fatal("failed to create shadow sampler set layout");
+}
+
+void VulkanDevice::createSkinningDescriptorLayout() {
+    VkDescriptorSetLayoutBinding binding{};
+    binding.binding = 0;
+    binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    binding.descriptorCount = 1;
+    binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    VkDescriptorSetLayoutCreateInfo li{};
+    li.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    li.bindingCount = 1;
+    li.pBindings = &binding;
+    if (vkCreateDescriptorSetLayout(device_, &li, nullptr, &skinningDescriptorLayout_) != VK_SUCCESS)
+        fatal("failed to create skinning set layout");
 }
 
 void VulkanDevice::createUniformBuffers(uint32_t frameCount, VkDeviceSize size) {

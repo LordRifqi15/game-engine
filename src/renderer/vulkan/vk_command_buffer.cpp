@@ -74,6 +74,7 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice& device,
                                          device_.shadowSamplerLayout());
     createIndirectBuffer();
     createInstanceBuffers();
+    createJointBuffer();
     createCameraDescriptors();
     createShadowSamplerSets();
     createCullPipeline();
@@ -115,6 +116,12 @@ VulkanCommandBuffer::~VulkanCommandBuffer() {
         vkDestroyBuffer(dev, batchRangeBuffer_, nullptr);
         vkFreeMemory(dev, batchRangeMemory_, nullptr);
     }
+    for (size_t i = 0; i < jointBuffers_.size(); ++i) {
+        if (jointMappeds_[i]) vkUnmapMemory(dev, jointMemories_[i]);
+        if (jointBuffers_[i]) vkDestroyBuffer(dev, jointBuffers_[i], nullptr);
+        if (jointMemories_[i]) vkFreeMemory(dev, jointMemories_[i], nullptr);
+    }
+    if (jointPool_) vkDestroyDescriptorPool(dev, jointPool_, nullptr);
 }
 
 void VulkanCommandBuffer::createIndirectBuffer() {
@@ -220,6 +227,64 @@ void VulkanCommandBuffer::createInstanceBuffers() {
     cbMakeHostVisibleBuffer(device_, kMaxIndirectDraws * sizeof(uint32_t) * 2,
                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                             &batchRangeBuffer_, &batchRangeMemory_, &batchRangeMapped_);
+}
+
+void VulkanCommandBuffer::createJointBuffer() {
+    VkDevice dev = device_.handle();
+    VkDeviceSize bytes = VkDeviceSize(kMaxJoints) * sizeof(glm::mat4);
+    jointBuffers_.resize(kFramesInFlight);
+    jointMemories_.resize(kFramesInFlight);
+    jointMappeds_.resize(kFramesInFlight);
+    for (uint32_t i = 0; i < kFramesInFlight; ++i) {
+        cbMakeHostVisibleBuffer(device_, bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                &jointBuffers_[i], &jointMemories_[i], &jointMappeds_[i]);
+        auto* mats = reinterpret_cast<glm::mat4*>(jointMappeds_[i]);
+        for (uint32_t j = 0; j < kMaxJoints; ++j) mats[j] = glm::mat4(1.0f);
+    }
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    poolSize.descriptorCount = kFramesInFlight;
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.maxSets = kFramesInFlight;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    if (vkCreateDescriptorPool(dev, &poolInfo, nullptr, &jointPool_) != VK_SUCCESS)
+        fatal("joint pool");
+    jointSets_.resize(kFramesInFlight);
+    VkDescriptorSetLayout layout = device_.skinningDescriptorLayout();
+    for (uint32_t i = 0; i < kFramesInFlight; ++i) {
+        VkDescriptorSetAllocateInfo ai{};
+        ai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        ai.descriptorPool = jointPool_;
+        ai.descriptorSetCount = 1;
+        ai.pSetLayouts = &layout;
+        if (vkAllocateDescriptorSets(dev, &ai, &jointSets_[i]) != VK_SUCCESS)
+            fatal("joint set alloc");
+        VkDescriptorBufferInfo bi{};
+        bi.buffer = jointBuffers_[i];
+        bi.offset = 0;
+        bi.range = bytes;
+        VkWriteDescriptorSet w{};
+        w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        w.dstSet = jointSets_[i];
+        w.dstBinding = 0;
+        w.descriptorCount = 1;
+        w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w.pBufferInfo = &bi;
+        vkUpdateDescriptorSets(dev, 1, &w, 0, nullptr);
+    }
+}
+
+void VulkanCommandBuffer::updateJoints(uint32_t frameIndex, const std::vector<glm::mat4>& mats) {
+    if (mats.empty() || jointMappeds_.empty()) return;
+    if (frameIndex >= jointMappeds_.size()) return;
+    uint32_t n = std::min<uint32_t>(static_cast<uint32_t>(mats.size()), kMaxJoints);
+    std::memcpy(jointMappeds_[frameIndex], mats.data(), n * sizeof(glm::mat4));
+    if (n < kMaxJoints) {
+        auto* dst = reinterpret_cast<glm::mat4*>(jointMappeds_[frameIndex]);
+        for (uint32_t i = n; i < kMaxJoints; ++i) dst[i] = glm::mat4(1.0f);
+    }
 }
 
 void VulkanCommandBuffer::createCullPipeline() {
@@ -804,7 +869,9 @@ void VulkanCommandBuffer::recordFrame(uint32_t frameIndex, uint32_t imageIndex,
     VkDescriptorSet envSet = environment_->frameSet(frameIndex);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.layout(),
                             3, 1, &envSet, 0, nullptr);
-
+    // Skinning joints (set 4).
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_.layout(),
+                            4, 1, &jointSets_[frameIndex], 0, nullptr);
     VkViewport viewport{};
     viewport.width = static_cast<float>(swapchain_.extent().width);
     viewport.height = static_cast<float>(swapchain_.extent().height);

@@ -2,6 +2,8 @@
 
 #include "core/camera.h"
 
+#include <glm/glm.hpp>
+
 #include <string>
 #include "core/instance_data.h"
 #include "core/light.h"
@@ -36,11 +38,14 @@ public:
     uint32_t swapchainWidth() const;
     uint32_t swapchainHeight() const;
 
-    // Depth readback for CPU occlusion (call after endFrame).
+    // Depth readback for CPU Hi-Z occlusion (call after endFrame).
     void requestDepthReadback();
     const std::vector<float>& depthPixels() const;
 
     const std::vector<unsigned char>& colorPixels() const;
+
+    // Skinning: upload joint matrices for next drawFrame (set 4 SSBO).
+    void updateJoints(const std::vector<glm::mat4>& joints);
 
     // Scene-facing draw call: renders all instances of a mesh in one draw.
     void drawMeshInstanced(const Mesh& mesh, const InstanceData& instance,

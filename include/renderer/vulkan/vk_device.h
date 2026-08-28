@@ -72,6 +72,9 @@ public:
     // Shadow map combined-image-sampler layout (set 2, binding 0, fragment).
     void createShadowSamplerLayout();
     VkDescriptorSetLayout shadowSamplerLayout() const { return shadowSamplerLayout_; }
+    // Skinning joints SSBO (set 4, binding 0, vertex stage, STORAGE_BUFFER).
+    void createSkinningDescriptorLayout();
+    VkDescriptorSetLayout skinningDescriptorLayout() const { return skinningDescriptorLayout_; }
     // IBL environment set (set 3): irradiance/prefiltered/BRDF/env cubemaps.
     void createSet3Layout();
     VkDescriptorSetLayout set3Layout() const { return set3Layout_; }
@@ -119,10 +122,10 @@ private:
     std::vector<VkBuffer> uniformBuffers_;
     std::vector<VkDeviceMemory> uniformMemories_;
     std::vector<void*> uniformMapped_;
-
     VkDescriptorSetLayout cameraDescriptorLayout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout materialDescriptorLayout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout shadowSamplerLayout_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout skinningDescriptorLayout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout set3Layout_ = VK_NULL_HANDLE;
 };
 

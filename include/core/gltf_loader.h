@@ -2,11 +2,14 @@
 
 #include "core/material.h"
 #include "core/mesh.h"
+#include "core/skeleton.h"
 
 #include <string>
 #include <vector>
 
 namespace engine {
+
+class TextureCache;
 
 // One renderable piece of a GLTF mesh (a primitive), with its material.
 struct GLTFPrimitive {
@@ -20,14 +23,15 @@ struct GLTFPrimitive {
 // the renderer layer owns actual GPU upload, so we return image URIs.
 struct GLTFModel {
     std::vector<GLTFPrimitive> primitives;
+    std::vector<Skeleton> skeletons; // from skins
+    std::vector<Animation> animations;
     // image URI -> loaded for later texture binding by the renderer layer
     bool ok = false;
     std::string error;
 };
 
-class TextureCache;
-
 // textureCache may be null: textures then stay unresolved (color-only).
+GLTFModel loadGLTFModel(const std::string& path, TextureCache* textures);
 std::vector<GLTFPrimitive> loadGLTF(const std::string& path, TextureCache* textures);
 
 } // namespace engine

@@ -20,7 +20,8 @@ VkRenderer::VkRenderer(Window& window, VulkanInstance& vk)
                                    device_->cameraDescriptorLayout(),
                                    device_->materialDescriptorLayout(),
                                    device_->shadowSamplerLayout(),
-                                   device_->set3Layout());
+                                   device_->set3Layout(),
+                                   device_->skinningDescriptorLayout());
     textureCache_ = new TextureCache(*device_);
     commandBuffers_ =
         new VulkanCommandBuffer(*device_, *swapchain_, *pipeline_, *textureCache_);
@@ -63,6 +64,10 @@ void VkRenderer::drawMeshInstanced(const Mesh& mesh, const InstanceData& instanc
     batch.instanceCount = 1; // one instance per drawMeshInstanced call
     ++nextInstanceOffset_;
     pendingBatches_.push_back(batch);
+}
+
+void VkRenderer::updateJoints(const std::vector<glm::mat4>& joints) {
+    commandBuffers_->updateJoints(currentFrame_, joints);
 }
 
 void VkRenderer::drawFrame() {

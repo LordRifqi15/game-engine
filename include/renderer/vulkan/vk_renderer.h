@@ -11,6 +11,8 @@
 #include "core/light.h"
 #include "core/mesh.h"
 
+#include <glm/glm.hpp>
+
 #include "renderer/api/render_command_buffer.h"
 #include "renderer/vulkan/texture_cache.h"
 #include "renderer/vulkan/vk_swapchain.h"
@@ -39,6 +41,8 @@ public:
     // Scene-facing draw call: renders all instances of a mesh in one draw.
     void drawMeshInstanced(const Mesh& mesh, const InstanceData& instance,
                            const Texture* texture);
+
+    void updateJoints(const std::vector<glm::mat4>& joints);
 
     // Draws one frame (submits all queued draws).
     void drawFrame();

@@ -19,7 +19,8 @@ public:
                    VkDescriptorSetLayout cameraSetLayout,
                    VkDescriptorSetLayout materialSetLayout,
                    VkDescriptorSetLayout shadowSamplerSetLayout,
-                   VkDescriptorSetLayout envSetLayout);
+                   VkDescriptorSetLayout envSetLayout,
+                   VkDescriptorSetLayout skinningSetLayout);
     ~VulkanPipeline() override;
 
     VulkanPipeline(const VulkanPipeline&) = delete;

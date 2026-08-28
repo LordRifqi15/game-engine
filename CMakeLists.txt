@@ -27,6 +27,7 @@ add_executable(engine
     src/core/mesh.cpp
     src/core/mesh_loader.cpp
     src/core/gltf_loader.cpp
+    src/core/animation_system.cpp
     src/platform/window.cpp
     src/platform/input.cpp
     src/renderer/renderer.cpp

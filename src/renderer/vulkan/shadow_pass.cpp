@@ -275,19 +275,21 @@ void VulkanShadowPass::createPipeline() {
     bindings[0] = {0, sizeof(engine::Vertex), VK_VERTEX_INPUT_RATE_VERTEX};
     bindings[1] = {1, sizeof(engine::InstanceData), VK_VERTEX_INPUT_RATE_INSTANCE};
 
-    static VkVertexInputAttributeDescription attributes[5]{};
+    static VkVertexInputAttributeDescription attributes[7]{};
     attributes[0] = {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(engine::Vertex, position)};
     for (int i = 0; i < 4; ++i) {
         attributes[1 + i] = {static_cast<uint32_t>(1 + i), 1,
                              VK_FORMAT_R32G32B32A32_SFLOAT,
                              offsetof(engine::InstanceData, model) + i * sizeof(glm::vec4)};
     }
+    attributes[5] = {9, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(engine::Vertex, jointIndices)};
+    attributes[6] = {10, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(engine::Vertex, jointWeights)};
 
     VkPipelineVertexInputStateCreateInfo vertexInput{};
     vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInput.vertexBindingDescriptionCount = 2;
     vertexInput.pVertexBindingDescriptions = bindings;
-    vertexInput.vertexAttributeDescriptionCount = 5;
+    vertexInput.vertexAttributeDescriptionCount = 7;
     vertexInput.pVertexAttributeDescriptions = attributes;
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};

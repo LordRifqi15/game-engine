@@ -7,6 +7,8 @@
 #include "core/light.h"
 #include "core/mesh.h"
 
+#include <glm/glm.hpp>
+
 #include "renderer/api/render_command_buffer.h"
 #include "renderer/vulkan/environment.h"
 #include "renderer/vulkan/shadow_pass.h"
@@ -37,22 +39,25 @@ public:
                      const glm::mat4& viewProjection,
                      const DirectionalLight& light,
                      const glm::vec3& cameraPos) override;
+    static constexpr uint32_t kMaxInstances = 65536;
+    static constexpr uint32_t kMaxJoints = 128;
 
     // Backend accessors (same module, allowed).
     VkCommandBuffer handle(uint32_t frameIndex) const { return buffers_[frameIndex]; }
 
-
-    static constexpr uint32_t kMaxInstances = 65536;
+    void updateJoints(uint32_t frameIndex, const std::vector<glm::mat4>& mats);
 
  private:
     void createCameraDescriptors();
     void createShadowSamplerSets();
     void createIndirectBuffer();
     void createInstanceBuffers();
+    void createJointBuffer();
     void createCullPipeline();
     void createHizPipeline();
     // Allocates (and caches) a set 1 descriptor for the texture.
     VkDescriptorSet materialDescriptor(const Texture* tex);
+    // Allocates (and caches) a set 1 descriptor for the texture.
 
     VulkanDevice& device_;
     VulkanSwapchain& swapchain_;
@@ -108,6 +113,13 @@ public:
     VkBuffer batchRangeBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory batchRangeMemory_ = VK_NULL_HANDLE;
     void* batchRangeMapped_ = nullptr;
+
+    // Skinning joints SSBO (set 4): host-visible, kMaxJoints mat4s per frame.
+    std::vector<VkBuffer> jointBuffers_;
+    std::vector<VkDeviceMemory> jointMemories_;
+    std::vector<void*> jointMappeds_;
+    VkDescriptorPool jointPool_ = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSet> jointSets_; // per frame in flight
 
 };
 

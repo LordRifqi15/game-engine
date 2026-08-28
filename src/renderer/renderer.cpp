@@ -39,6 +39,10 @@ void Renderer::drawMeshInstanced(const Mesh& mesh, const InstanceData& instance,
     impl_->backend.drawMeshInstanced(mesh, instance, texture);
 }
 
+void Renderer::updateJoints(const std::vector<glm::mat4>& joints) {
+    impl_->backend.updateJoints(joints);
+}
+
 uint32_t Renderer::swapchainWidth() const { return impl_->backend.swapchainWidth(); }
 uint32_t Renderer::swapchainHeight() const { return impl_->backend.swapchainHeight(); }
 

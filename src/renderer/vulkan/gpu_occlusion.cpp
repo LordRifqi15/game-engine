@@ -251,19 +251,21 @@ void VulkanGpuOcclusion::createPrepassPipeline() {
     static VkVertexInputBindingDescription bindings[2]{};
     bindings[0] = {0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX};
     bindings[1] = {1, sizeof(InstanceData), VK_VERTEX_INPUT_RATE_INSTANCE};
-    static VkVertexInputAttributeDescription attrs[5]{};
+    static VkVertexInputAttributeDescription attrs[7]{};
     attrs[0] = {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position)};
     for (int i = 0; i < 4; ++i)
         attrs[1 + i] = {static_cast<uint32_t>(1 + i), 1,
                         VK_FORMAT_R32G32B32A32_SFLOAT,
                         offsetof(InstanceData, model) +
                             static_cast<uint32_t>(i * sizeof(glm::vec4))};
+    attrs[5] = {9, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Vertex, jointIndices)};
+    attrs[6] = {10, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Vertex, jointWeights)};
 
     VkPipelineVertexInputStateCreateInfo vin{};
     vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vin.vertexBindingDescriptionCount = 2;
     vin.pVertexBindingDescriptions = bindings;
-    vin.vertexAttributeDescriptionCount = 5;
+    vin.vertexAttributeDescriptionCount = 7;
     vin.pVertexAttributeDescriptions = attrs;
 
     VkPipelineInputAssemblyStateCreateInfo ia{};

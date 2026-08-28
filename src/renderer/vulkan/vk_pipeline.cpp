@@ -71,7 +71,8 @@ VulkanPipeline::VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swap
                                VkDescriptorSetLayout cameraSetLayout,
                                VkDescriptorSetLayout materialSetLayout,
                                VkDescriptorSetLayout shadowSamplerSetLayout,
-                               VkDescriptorSetLayout envSetLayout)
+                               VkDescriptorSetLayout envSetLayout,
+                               VkDescriptorSetLayout skinningSetLayout)
     : device_(device), swapchain_(swapchain) {
     VkDevice dev = device_.handle();
 
@@ -85,12 +86,10 @@ VulkanPipeline::VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swap
     static VkVertexInputBindingDescription bindings[2]{};
     bindings[0] = {0, sizeof(engine::Vertex), VK_VERTEX_INPUT_RATE_VERTEX};
     bindings[1] = {1, sizeof(engine::InstanceData), VK_VERTEX_INPUT_RATE_INSTANCE};
-
     // loc 0: position, loc 1: normal (binding 0)
-    // loc 2-5: instance model columns, loc 6: instance color (binding 1)
-    // Vertex: loc 0 = position, loc 1 = normal, loc 2 = uv.
-    // Instance: model columns occupy locs 3-6, color loc 7, params loc 8.
-    static VkVertexInputAttributeDescription attributes[9]{};
+    // loc 2: uv, loc 9: jointIndices, loc 10: jointWeights (binding 0)
+    // loc 3-6: instance model columns, loc 7: instance color, loc 8: params (binding 1)
+    static VkVertexInputAttributeDescription attributes[11]{};
     attributes[0] = {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(engine::Vertex, position)};
     attributes[1] = {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(engine::Vertex, normal)};
     attributes[2] = {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(engine::Vertex, uv)};
@@ -99,14 +98,15 @@ VulkanPipeline::VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swap
                              offsetof(engine::InstanceData, model) + i * sizeof(glm::vec4)};
     }
     attributes[7] = {7, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(engine::InstanceData, color)};
-    attributes[8] = {8, 1, VK_FORMAT_R32G32B32A32_SFLOAT,
-                     offsetof(engine::InstanceData, params)}; // metallic/roughness
+    attributes[8] = {8, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(engine::InstanceData, params)};
+    attributes[9] = {9, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(engine::Vertex, jointIndices)};
+    attributes[10] = {10, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(engine::Vertex, jointWeights)};
 
     VkPipelineVertexInputStateCreateInfo vertexInput{};
     vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInput.vertexBindingDescriptionCount = 2;
     vertexInput.pVertexBindingDescriptions = bindings;
-    vertexInput.vertexAttributeDescriptionCount = 9;
+    vertexInput.vertexAttributeDescriptionCount = 11;
     vertexInput.pVertexAttributeDescriptions = attributes;
 
     VkShaderModule vert = createShaderModule(dev, vertCode);
@@ -170,9 +170,9 @@ VulkanPipeline::VulkanPipeline(VulkanDevice& device, const VulkanSwapchain& swap
     dynamicState.dynamicStateCount = 2;
     dynamicState.pDynamicStates = dynamics;
 
-    std::array<VkDescriptorSetLayout, 4> setLayouts = {
+    std::array<VkDescriptorSetLayout, 5> setLayouts = {
         cameraSetLayout, materialSetLayout, shadowSamplerSetLayout,
-        envSetLayout};
+        envSetLayout, skinningSetLayout};
     // Push constants: per-object color (16B) shared between vert+frag.
     VkPushConstantRange pushRange{};
     pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
