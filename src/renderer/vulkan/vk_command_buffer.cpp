@@ -34,13 +34,31 @@ constexpr VkDeviceSize kCameraUboSize = sizeof(glm::mat4) * 6 + sizeof(glm::vec4
 const unsigned char whitePixel[4] = {255, 255, 255, 255};
 
 std::vector<char> cbReadFileBytes(const std::string& path) {
-    std::ifstream f(path, std::ios::ate | std::ios::binary);
-    if (!f) fatal((std::string("open shader: ") + path).c_str());
-    size_t size = static_cast<size_t>(f.tellg());
-    std::vector<char> bytes(size);
-    f.seekg(0);
-    f.read(bytes.data(), size);
-    return bytes;
+    // Try CWD-relative first, then exe-relative (build/ vs root execution).
+    for (const auto& tryPath : [&]() {
+        std::vector<std::string> out{path};
+        char exeBuf[4096];
+        ssize_t len = ::readlink("/proc/self/exe", exeBuf, sizeof(exeBuf) - 1);
+        if (len > 0) {
+            exeBuf[len] = '\0';
+            std::string exe(exeBuf);
+            auto slash = exe.find_last_of('/');
+            std::string dir = (slash == std::string::npos) ? "." : exe.substr(0, slash);
+            out.push_back(dir + "/" + path);
+            out.push_back(dir + "/../" + path);
+        }
+        return out;
+    }()) {
+        std::ifstream f(tryPath, std::ios::ate | std::ios::binary);
+        if (!f) continue;
+        size_t size = static_cast<size_t>(f.tellg());
+        std::vector<char> bytes(size);
+        f.seekg(0);
+        if (!f.read(bytes.data(), size)) continue;
+        return bytes;
+    }
+    fatal((std::string("open shader: ") + path).c_str());
+    return {};
 }
 
 VkShaderModule cbShaderModule(VkDevice dev, const std::vector<char>& code) {
