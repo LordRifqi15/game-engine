@@ -54,6 +54,11 @@ public:
     // Submits all queued draw calls for this frame (present).
     void endFrame();
 
+    // Editor overlay (Task 031): ImGui-based node editor.
+    void enableEditorOverlay(Window& window);
+    void editorBeginFrame();
+    void editorEndFrame();
+
 private:
     class Impl;   // backend-owned state
     Impl* impl_ = nullptr;

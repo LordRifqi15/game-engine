@@ -922,7 +922,12 @@ void VulkanCommandBuffer::recordFrame(uint32_t frameIndex, uint32_t imageIndex,
                                  1, sizeof(VkDrawIndexedIndirectCommand));
         ++drawId;
     }
+
+    // Editor overlay (Task 031) renders on top inside the same pass.
+    if (overlay_) overlay_(cmd);
+
     vkCmdEndRenderPass(cmd);
+
 
     if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
         fatal("failed to end recording command buffer");

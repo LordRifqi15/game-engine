@@ -46,8 +46,11 @@ void AnimGraph::evaluate(float dt, std::vector<Skeleton::Pose>& outPose) {
         outPose = baseSkeleton.pose;
         return;
     }
+    // External speed drives every editor-created param node (Task 031 bridge).
+    for (auto& p : ownedParams) p->value = speed.value;
     root->evaluate(dt, baseSkeleton, outPose);
 }
+
 
 void AnimGraph::evaluateInto(Skeleton& skeleton, float dt) {
     std::vector<Skeleton::Pose> blended;

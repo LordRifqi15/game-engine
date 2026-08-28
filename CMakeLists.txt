@@ -17,6 +17,12 @@ find_package(glm REQUIRED CONFIG)
 
 add_executable(engine
     third_party/tinyobjloader/tiny_obj_loader.cc
+    third_party/imgui/imgui.cpp
+    third_party/imgui/imgui_draw.cpp
+    third_party/imgui/imgui_tables.cpp
+    third_party/imgui/imgui_widgets.cpp
+    third_party/imgui/backends/imgui_impl_glfw.cpp
+    third_party/imgui/backends/imgui_impl_vulkan.cpp
     src/main.cpp
     src/core/application.cpp
     src/core/camera_controller.cpp
@@ -30,6 +36,8 @@ add_executable(engine
     src/core/animation_system.cpp
     src/core/anim_graph.cpp
     src/core/anim_state_machine.cpp
+    src/core/anim_editor.cpp
+    src/editor/anim_graph_editor.cpp
     src/platform/window.cpp
     src/platform/input.cpp
     src/renderer/renderer.cpp
@@ -86,13 +94,13 @@ add_custom_command(
     COMMENT "Compiling shaders"
 )
 add_custom_target(shaders ALL DEPENDS ${SHADER_OUT})
-add_dependencies(engine shaders)
-
 target_include_directories(engine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tinyobjloader
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tinygltf
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/backends
 )
 
 target_link_libraries(engine PRIVATE

@@ -38,8 +38,8 @@ public:
     void addTransition(AnimState* from, AnimState* to,
                        std::function<bool(const AnimParams&, const AnimState&)> condition,
                        float blendDuration = 0.3f);
+    bool setStateGraph(const std::string& name, std::shared_ptr<AnimGraph> g);
     void setStart(AnimState* s) { current_ = s; }
-
     const AnimState* current() const { return current_; }
     AnimParams& params() { return params_; }
 

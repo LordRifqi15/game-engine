@@ -44,11 +44,17 @@ public:
 
     void updateJoints(const std::vector<glm::mat4>& joints);
 
+    // Editor overlay (Task 031): enable ImGui inside main pass.
+    void enableEditorOverlay(Window& window);
+    void editorBeginFrame();
+    void editorEndFrame();
+
     // Draws one frame (submits all queued draws).
     void drawFrame();
 
     uint32_t swapchainWidth() const { return swapchain_->width(); }
     uint32_t swapchainHeight() const { return swapchain_->height(); }
+
 
     const Texture* loadTexture(const std::string& path) { return textureCache_->load(path); }
     TextureCache& textureCache() { return *textureCache_; }
@@ -71,11 +77,12 @@ private:
     std::vector<PendingBatch> pendingBatches_;
     std::vector<InstanceData> allInstances_;
     uint32_t nextInstanceOffset_ = 0;
-
     glm::mat4 viewProjection_{1.0f};
     DirectionalLight light_{};
     glm::vec3 cameraPos_{0.0f, 0.0f, 3.0f};
     uint32_t currentFrame_ = 0;
+    bool editorEnabled_ = false;
+    VkDescriptorPool imguiPool_ = VK_NULL_HANDLE;
     static constexpr uint32_t kMaxFramesInFlight = 2;
 };
 

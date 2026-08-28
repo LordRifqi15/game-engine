@@ -53,6 +53,7 @@ struct BlendNode : AnimNode {
 struct AnimGraph {
     FloatParameterNode speed;
     std::vector<std::unique_ptr<AnimNode>> ownedNodes;
+    std::vector<std::unique_ptr<FloatParameterNode>> ownedParams; // editor-created params (Task 031)
     AnimNode* root = nullptr;
     Skeleton baseSkeleton; // template for pose sizing / bind pose
 

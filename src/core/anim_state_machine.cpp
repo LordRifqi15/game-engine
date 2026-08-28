@@ -23,6 +23,17 @@ void AnimStateMachine::addTransition(AnimState* from, AnimState* to,
     transitions_.push_back(AnimTransition{from, to, std::move(condition), blendDuration > 0.0f ? blendDuration : 0.3f});
 }
 
+bool AnimStateMachine::setStateGraph(const std::string& name, std::shared_ptr<AnimGraph> g) {
+    for (auto& s : states_) {
+        if (s->name == name) {
+            s->graph = std::move(g);
+            return true;
+        }
+    }
+    return false;
+}
+
+
 void AnimStateMachine::update(float dt, std::vector<Skeleton::Pose>& outPose) {
     if (!current_) { outPose.clear(); return; }
     current_->timeInState += dt;

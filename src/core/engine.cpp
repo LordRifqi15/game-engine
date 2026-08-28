@@ -28,6 +28,7 @@ namespace engine {
 Engine::Engine(Window& window)
     : window_(window) {
     renderer_ = new Renderer(window_);
+    renderer_->enableEditorOverlay(window_);
     scene_ = new Scene();
 
         // Streaming world: shared quad mesh for ground chunks, rotated to XZ plane.
@@ -74,6 +75,14 @@ Engine::Engine(Window& window)
                     animC.machine = makeDefaultStateMachine(animC.animations, skelC.skeleton, jumpDur);
                     std::printf("[state] machine built: %zu states (Idle/Locomotion/Jump)\n", animC.animations.size());
                     std::fflush(stdout);
+                    // Task 031: editor mirrors locomotion graph for visual editing
+                    if (!editor_) {
+                        editorGraph_ = makeLocomotionEditorGraph(animC.animations);
+                        editorBaseSkeleton_ = skelC.skeleton;
+                        editor_ = std::make_unique<AnimGraphEditor>(editorGraph_);
+                        std::printf("[editor] graph editor ready: %zu nodes, output %d\n", editorGraph_.nodes.size(), editorGraph_.outputNode);
+                        std::fflush(stdout);
+                    }
                     scene_->registry().addComponent<AnimationComponent>(e, std::move(animC));
                 }
             }
@@ -106,6 +115,26 @@ void Engine::run() {
     while (!window_.shouldClose()) {
         time_.beginFrame();
         window_.pollEvents();
+
+        // Task 031: F1 toggles node editor; overlay recorded inside main pass.
+        static bool wasF1 = false;
+        bool f1 = Input::isKeyPressed(GLFW_KEY_F1);
+        if (f1 && !wasF1) editorOpen_ = !editorOpen_;
+        renderer_->editorBeginFrame();
+        if (editorOpen_ && editor_) {
+            editor_->draw(editorBaseSkeleton_, [&](std::shared_ptr<AnimGraph> g) {
+                auto* arr = scene_->registry().tryGetComponentArray<AnimationComponent>();
+                if (!arr) return;
+                for (size_t i = 0; i < arr->size(); ++i) {
+                    auto& comp = arr->get(arr->entityAt(i));
+                    if (comp.machine && comp.machine->setStateGraph("Locomotion", g)) break;
+                }
+                std::printf("[editor] applied graph to Locomotion (%zu nodes)\n", g->ownedNodes.size());
+                std::fflush(stdout);
+            });
+        }
+        renderer_->editorEndFrame();
+
         update(time_.deltaTime());
         world_->update(scene_->camera().position);
 
@@ -122,6 +151,7 @@ void Engine::run() {
         }
     }
 }
+
 
 void Engine::update(double deltaTime) {
     // Simulation step: camera controller first, then scene systems (physics/AI later).

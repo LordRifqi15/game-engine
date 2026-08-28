@@ -7,10 +7,19 @@
 #include "renderer/vulkan/vk_pipeline.h"
 #include "renderer/vulkan/vk_swapchain.h"
 
+#include "imgui.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_vulkan.h"
+
 #include <cstdio>
 #include <cstdlib>
 
 namespace engine {
+static void imguiOverlayDraw(VkCommandBuffer cmd) {
+    if (auto* draw = ImGui::GetDrawData()) ImGui_ImplVulkan_RenderDrawData(draw, cmd);
+}
+
+
 
 VkRenderer::VkRenderer(Window& window, VulkanInstance& vk)
     : window_(window), vk_(vk) {
@@ -34,6 +43,15 @@ VkRenderer::VkRenderer(Window& window, VulkanInstance& vk)
 VkRenderer::~VkRenderer() {
     if (device_) {
         device_->waitIdle();
+    }
+    if (editorEnabled_) {
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+        if (imguiPool_ != VK_NULL_HANDLE) {
+            vkDestroyDescriptorPool(device_->handle(), imguiPool_, nullptr);
+            imguiPool_ = VK_NULL_HANDLE;
+        }
     }
     delete commandBuffers_;
     delete pipeline_;
@@ -128,6 +146,61 @@ void VkRenderer::drawFrame() {
     nextInstanceOffset_ = 0;
 
     currentFrame_ = (currentFrame_ + 1) % kMaxFramesInFlight;
+}
+
+// ---- Editor overlay (Task 031) ----
+
+void VkRenderer::enableEditorOverlay(Window& window) {
+    if (editorEnabled_) return;
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    VkDescriptorPoolSize pools[4]{};
+    pools[0] = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 32};
+    pools[1] = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 16};
+    pools[2] = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16};
+    pools[3] = {VK_DESCRIPTOR_TYPE_SAMPLER, 16};
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    poolInfo.maxSets = 32;
+    poolInfo.poolSizeCount = 4;
+    poolInfo.pPoolSizes = pools;
+    if (vkCreateDescriptorPool(device_->handle(), &poolInfo, nullptr, &imguiPool_) != VK_SUCCESS) {
+        std::fprintf(stderr, "Failed to create ImGui descriptor pool\n");
+        return;
+    }
+
+    ImGui_ImplGlfw_InitForVulkan(window.handle(), true);
+    ImGui_ImplVulkan_InitInfo init = {};
+    init.Instance = vk_.handle();
+    init.PhysicalDevice = device_->physical();
+    init.Device = device_->handle();
+    init.QueueFamily = device_->graphicsFamily();
+    init.Queue = device_->graphicsQueue();
+    init.DescriptorPool = imguiPool_;
+    init.RenderPass = swapchain_->renderPass();
+    init.MinImageCount = 2;
+    init.ImageCount = static_cast<uint32_t>(swapchain_->imageCount());
+    init.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    init.CheckVkResultFn = nullptr;
+    ImGui_ImplVulkan_Init(&init);
+
+    commandBuffers_->setOverlay(imguiOverlayDraw);
+    editorEnabled_ = true;
+}
+
+void VkRenderer::editorBeginFrame() {
+    if (!editorEnabled_) return;
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+}
+
+void VkRenderer::editorEndFrame() {
+    if (!editorEnabled_) return;
+    ImGui::Render();
 }
 
 } // namespace engine

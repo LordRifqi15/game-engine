@@ -1,10 +1,15 @@
 #pragma once
 
+#include <memory>
+
+#include "core/anim_editor.h"
 #include "core/camera_controller.h"
 #include "core/job_system.h"
 #include "core/scene.h"
 #include "core/time.h"
 #include "core/world.h"
+
+#include "editor/anim_graph_editor.h"
 
 namespace engine {
 
@@ -12,8 +17,6 @@ class Window;
 class Renderer;
 class Scene;
 
-// Engine core: owns frame loop, time, scene, renderer.
-// Update = simulation. Render = visualization only.
 class Engine {
 public:
     explicit Engine(Window& window);
@@ -22,7 +25,6 @@ public:
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
 
-    // Runs until window closes: Update → Render each frame.
     void run();
 
     Scene& scene() { return *scene_; }
@@ -38,11 +40,17 @@ private:
     class Mesh* triangleMesh_ = nullptr;
     class Mesh* cubeMesh_ = nullptr;
     std::vector<class Mesh> gltfMeshes_;
-    const class Texture* cubeTexture_ = nullptr; // opaque; owned by renderer
+    const class Texture* cubeTexture_ = nullptr;
     CameraController controller_;
     World* world_ = nullptr;
     JobSystem jobs_;
-    bool debugTiming_ = false; // set true to log FPS once per second
+    bool debugTiming_ = false;
+    // Task 031: visual graph editor (F1 to toggle)
+    std::unique_ptr<AnimGraphEditor> editor_;
+    EditorGraph editorGraph_;
+    Skeleton editorBaseSkeleton_;
+    bool editorOpen_ = true;
 };
 
 } // namespace engine
+

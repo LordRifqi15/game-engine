@@ -7,6 +7,7 @@
 #include "core/light.h"
 #include "core/mesh.h"
 
+#include <functional>
 #include <glm/glm.hpp>
 
 #include "renderer/api/render_command_buffer.h"
@@ -44,8 +45,10 @@ public:
 
     // Backend accessors (same module, allowed).
     VkCommandBuffer handle(uint32_t frameIndex) const { return buffers_[frameIndex]; }
-
     void updateJoints(uint32_t frameIndex, const std::vector<glm::mat4>& mats);
+
+    // Editor overlay (Task 031): invoked inside the main render pass, before End.
+    void setOverlay(std::function<void(VkCommandBuffer)> cb) { overlay_ = std::move(cb); }
 
  private:
     void createCameraDescriptors();
@@ -118,8 +121,11 @@ public:
     std::vector<VkBuffer> jointBuffers_;
     std::vector<VkDeviceMemory> jointMemories_;
     std::vector<void*> jointMappeds_;
+
     VkDescriptorPool jointPool_ = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> jointSets_; // per frame in flight
+
+    std::function<void(VkCommandBuffer)> overlay_; // ImGui overlay draw hook
 
 };
 

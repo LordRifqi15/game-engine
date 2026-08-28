@@ -50,6 +50,18 @@ void Renderer::endFrame() {
     impl_->backend.drawFrame();
 }
 
+void Renderer::enableEditorOverlay(Window& window) {
+    impl_->backend.enableEditorOverlay(window);
+}
+
+void Renderer::editorBeginFrame() {
+    impl_->backend.editorBeginFrame();
+}
+
+void Renderer::editorEndFrame() {
+    impl_->backend.editorEndFrame();
+}
+
 void Renderer::requestDepthReadback() { impl_->backend.requestDepthReadback(); }
 const std::vector<float>& Renderer::depthPixels() const { return impl_->backend.depthPixels(); }
 } // namespace engine
