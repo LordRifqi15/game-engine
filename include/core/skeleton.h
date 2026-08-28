@@ -65,16 +65,6 @@ struct Animation {
     std::vector<AnimationChannel> channels;
 };
 
-struct AnimState {
-    int currentAnim = 0;
-    int nextAnim = -1;
-    float time = 0.0f;
-    float blendTime = 0.0f;
-    float blendDuration = 0.25f;
-};
-
-enum class LocomotionState { Idle, Walk, Run };
-
 // Components for registry (ECS)
 struct SkeletonComponent {
     Skeleton skeleton;
@@ -82,25 +72,10 @@ struct SkeletonComponent {
 
 struct AnimationComponent {
     std::vector<Animation> animations;
-    AnimState state; // legacy (Task 030) kept for compat, not used by graph
     float speed = 1.0f;
     bool playing = true;
     bool loop = true;
-    LocomotionState playState = LocomotionState::Idle;
     std::shared_ptr<AnimGraph> graph; // Task 029: data-driven pose tree
-
-    void crossFadeTo(int next, float duration) {
-        if (next < 0 || next >= (int)animations.size()) return;
-        if (next == state.currentAnim && state.nextAnim == -1) return;
-        if (state.nextAnim == next) return;
-        state.nextAnim = next;
-        state.blendTime = 0.0f;
-        state.blendDuration = duration > 0.0f ? duration : 0.25f;
-    }
-    bool isBlending() const { return state.nextAnim != -1; }
 };
-
-
-
 
 } // namespace engine

@@ -65,15 +65,9 @@ Engine::Engine(Window& window)
                         std::printf("[engine] duplicated anim for blending demo: now %zu anims\n", animC.animations.size());
                         std::fflush(stdout);
                     }
-                    animC.state.currentAnim = 0;
-                    animC.state.nextAnim = -1;
-                    animC.state.time = 0.0f;
-                    animC.state.blendTime = 0.0f;
-                    animC.state.blendDuration = 0.3f;
                     animC.speed = 1.0f;
                     animC.playing = true;
                     animC.loop = true;
-                    animC.playState = LocomotionState::Idle;
                     animC.graph = makeLocomotionGraph(animC.animations, skelC.skeleton);
                     std::printf("[graph] built locomotion graph: %zu clips root %p speed %p\n", animC.animations.size(), (void*)animC.graph->root, (void*)&animC.graph->speed);
                     std::fflush(stdout);
@@ -167,14 +161,9 @@ void Engine::update(double deltaTime) {
             auto& animC = animArray->get(e);
             if (animC.animations.empty() || !animC.playing) continue;
             // Task 029: data-driven graph (no hardcoded state logic)
-            if (animC.graph) {
-                animC.graph->setSpeed(desiredSpeed);
-                animC.graph->evaluateInto(skelC.skeleton, dt);
-            } else {
-                // No graph: fallback to direct clip 0 (should not happen after graph build)
-                updateSkeletonFromAnimation(skelC.skeleton, animC.animations[0], animC.state.time + dt);
-                computeFinalMatrices(skelC.skeleton);
-            }
+            if (!animC.graph) continue;
+            animC.graph->setSpeed(desiredSpeed);
+            animC.graph->evaluateInto(skelC.skeleton, dt);
             renderer_->updateJoints(skelC.skeleton.finalMatrices);
             uploaded = true;
             break;
