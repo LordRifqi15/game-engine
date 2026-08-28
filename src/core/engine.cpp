@@ -1,6 +1,7 @@
 #include "core/engine.h"
 
 #include "core/anim_graph.h"
+#include "core/anim_state_machine.h"
 #include "core/animation_system.h"
 #include "core/bounds_component.h"
 #include "core/mesh.h"
@@ -68,8 +69,10 @@ Engine::Engine(Window& window)
                     animC.speed = 1.0f;
                     animC.playing = true;
                     animC.loop = true;
-                    animC.graph = makeLocomotionGraph(animC.animations, skelC.skeleton);
-                    std::printf("[graph] built locomotion graph: %zu clips root %p speed %p\n", animC.animations.size(), (void*)animC.graph->root, (void*)&animC.graph->speed);
+                    // Task 030: state machine selects graphs; graphs select poses.
+                    float jumpDur = animC.animations[1].duration > 0.0f ? animC.animations[1].duration : 1.0f;
+                    animC.machine = makeDefaultStateMachine(animC.animations, skelC.skeleton, jumpDur);
+                    std::printf("[state] machine built: %zu states (Idle/Locomotion/Jump)\n", animC.animations.size());
                     std::fflush(stdout);
                     scene_->registry().addComponent<AnimationComponent>(e, std::move(animC));
                 }
@@ -153,6 +156,12 @@ void Engine::update(double deltaTime) {
     }
     float desiredSpeed = hasInput ? inputSpeed : autoSpeed;
 
+    // Jump is edge-triggered so holding SPACE doesn't re-fire.
+    static bool prevSpace = false;
+    bool space = Input::isKeyPressed(GLFW_KEY_SPACE);
+    bool jumpPressed = space && !prevSpace;
+    prevSpace = space;
+
     if (skelArray && animArray) {
         for (size_t i = 0; i < skelArray->size(); ++i) {
             Entity e = skelArray->entityAt(i);
@@ -160,10 +169,11 @@ void Engine::update(double deltaTime) {
             auto& skelC = skelArray->get(e);
             auto& animC = animArray->get(e);
             if (animC.animations.empty() || !animC.playing) continue;
-            // Task 029: data-driven graph (no hardcoded state logic)
-            if (!animC.graph) continue;
-            animC.graph->setSpeed(desiredSpeed);
-            animC.graph->evaluateInto(skelC.skeleton, dt);
+            // Task 030: state machine -> active graph -> pose. Engine only feeds params.
+            if (!animC.machine) continue;
+            animC.machine->params().speed = desiredSpeed;
+            animC.machine->params().jumpPressed = jumpPressed;
+            animC.machine->evaluateInto(skelC.skeleton, dt);
             renderer_->updateJoints(skelC.skeleton.finalMatrices);
             uploaded = true;
             break;

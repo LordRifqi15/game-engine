@@ -2,10 +2,8 @@
 
 #include "core/skeleton.h"
 
-#include <algorithm>
 #include <memory>
 #include <vector>
-
 namespace engine {
 
 // Base node: evaluates to a pose vector for the skeleton.
@@ -73,7 +71,9 @@ struct AnimGraph {
 //        [Blend Node] (Idle -> WalkRun)
 //        /          \
 //   [Idle]        [Walk/Run Blend] (Walk -> Run)
-// Anim indices: 0=Idle, 1=Walk, 2=Run (fallback to last available).
 std::shared_ptr<AnimGraph> makeLocomotionGraph(const std::vector<Animation>& anims, const Skeleton& baseSkeleton);
+
+// Single-clip graph (root = ClipNode). For one-shot states like Idle/Jump.
+std::shared_ptr<AnimGraph> makeSingleClipGraph(const Animation& anim, const Skeleton& baseSkeleton, float playbackSpeed = 1.0f);
 
 } // namespace engine

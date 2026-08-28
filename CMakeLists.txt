@@ -29,6 +29,7 @@ add_executable(engine
     src/core/gltf_loader.cpp
     src/core/animation_system.cpp
     src/core/anim_graph.cpp
+    src/core/anim_state_machine.cpp
     src/platform/window.cpp
     src/platform/input.cpp
     src/renderer/renderer.cpp

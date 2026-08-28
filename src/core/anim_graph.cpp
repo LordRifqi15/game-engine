@@ -115,4 +115,15 @@ std::shared_ptr<AnimGraph> makeLocomotionGraph(const std::vector<Animation>& ani
     return graph;
 }
 
+std::shared_ptr<AnimGraph> makeSingleClipGraph(const Animation& anim, const Skeleton& baseSkeleton, float playbackSpeed) {
+    auto graph = std::make_shared<AnimGraph>();
+    graph->baseSkeleton = baseSkeleton;
+    if (graph->baseSkeleton.pose.size() != graph->baseSkeleton.joints.size()) graph->baseSkeleton.resizePose();
+    auto clip = std::make_unique<ClipNode>(anim);
+    clip->playbackSpeed = playbackSpeed;
+    graph->root = clip.get();
+    graph->ownedNodes.push_back(std::move(clip));
+    return graph;
+}
+
 } // namespace engine

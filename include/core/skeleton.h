@@ -10,6 +10,7 @@
 namespace engine {
 
 struct AnimGraph; // forward for data-driven graph (Task 029)
+struct AnimStateMachine; // forward for state machine (Task 030)
 
 // Max joints per skeleton (SSBO size, keep under UBO limit if used).
 constexpr uint32_t kMaxJoints = 128;
@@ -75,7 +76,7 @@ struct AnimationComponent {
     float speed = 1.0f;
     bool playing = true;
     bool loop = true;
-    std::shared_ptr<AnimGraph> graph; // Task 029: data-driven pose tree
+    std::shared_ptr<AnimStateMachine> machine; // Task 030: state machine -> graphs -> pose
 };
 
 } // namespace engine
