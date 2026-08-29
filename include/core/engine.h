@@ -52,9 +52,13 @@ private:
     EditorGraph editorGraph_;
     Skeleton editorBaseSkeleton_;
     bool editorOpen_ = true;
-    // Task 034: gameplay graph (Input -> Logic -> Action -> AnimParams)
-    std::shared_ptr<GameplayGraph> gameplayGraph_;
+    // Task 035: gameplay graph editor (F2 to toggle) and per-entity binding
+    std::unique_ptr<AnimGraphEditor> gameplayEditor_;
+    EditorGraph gameplayEditorGraph_;
+    bool gameplayEditorOpen_ = false;
+    Entity gameplayEditorTarget_ = 0;
 };
+
 
 } // namespace engine
 

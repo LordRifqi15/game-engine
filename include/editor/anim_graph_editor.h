@@ -16,6 +16,8 @@ public:
 
     // Animations for resolving clip indices in AI-generated / loaded graphs.
     void setAnimations(const std::vector<Animation>* anims) { anims_ = anims; }
+    const EditorGraph& getGraph() const { return ed_; }
+    EditorGraph& getGraph() { return ed_; }
 
     // Call every frame while open. onApply receives rebuilt runtime graphs.
     void draw(const Skeleton& baseSkeleton,

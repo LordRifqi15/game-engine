@@ -16,6 +16,7 @@ struct GameplayNode {
     virtual std::string typeName() const = 0;
     virtual float getFloat() const { return 0.0f; }
     virtual bool getBool() const { return false; }
+    virtual std::unique_ptr<GameplayNode> clone() const = 0;
 };
 
 struct FloatNode : GameplayNode {
@@ -24,6 +25,7 @@ struct FloatNode : GameplayNode {
     float getFloat() const override { return value; }
     void execute(float dt) override;
     std::string typeName() const override { return "Float"; }
+    std::unique_ptr<GameplayNode> clone() const override;
 };
 
 struct KeyInputNode : GameplayNode {
@@ -32,6 +34,7 @@ struct KeyInputNode : GameplayNode {
     bool getBool() const override { return pressed; }
     void execute(float dt) override;
     std::string typeName() const override { return "KeyInput"; }
+    std::unique_ptr<GameplayNode> clone() const override;
 };
 
 struct AndNode : GameplayNode {
@@ -41,6 +44,7 @@ struct AndNode : GameplayNode {
     bool getBool() const override { return value; }
     void execute(float dt) override;
     std::string typeName() const override { return "And"; }
+    std::unique_ptr<GameplayNode> clone() const override;
 };
 
 struct BranchNode : GameplayNode {
@@ -51,6 +55,7 @@ struct BranchNode : GameplayNode {
     float getFloat() const override { return value; }
     void execute(float dt) override;
     std::string typeName() const override { return "Branch"; }
+    std::unique_ptr<GameplayNode> clone() const override;
 };
 
 struct SetFloatParamNode : GameplayNode {
@@ -59,6 +64,7 @@ struct SetFloatParamNode : GameplayNode {
     float AnimParams::* member = nullptr;
     void execute(float dt) override;
     std::string typeName() const override { return "SetFloatParam"; }
+    std::unique_ptr<GameplayNode> clone() const override;
 };
 
 struct SetBoolParamNode : GameplayNode {
@@ -68,6 +74,7 @@ struct SetBoolParamNode : GameplayNode {
     bool prev = false;
     void execute(float dt) override;
     std::string typeName() const override { return "SetBoolParam"; }
+    std::unique_ptr<GameplayNode> clone() const override;
 };
 
 struct TimerNode : GameplayNode {
@@ -75,6 +82,7 @@ struct TimerNode : GameplayNode {
     float getFloat() const override { return value; }
     void execute(float dt) override;
     std::string typeName() const override { return "Timer"; }
+    std::unique_ptr<GameplayNode> clone() const override;
 private:
     float t = 0.0f;
 };
@@ -86,6 +94,7 @@ struct GameplayGraph {
     void setTarget(AnimParams* p);
     void execute(float dt);
     void execute(float dt, AnimParams& outParams);
+    std::shared_ptr<GameplayGraph> clone(AnimParams* newTarget) const;
 
     template <typename T, typename... Args>
     T* addNode(Args&&... args) {

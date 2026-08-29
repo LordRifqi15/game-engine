@@ -5,20 +5,40 @@
 
 #include <GLFW/glfw3.h>
 #include <unordered_map>
+
 namespace engine {
 
 void FloatNode::execute(float) {
     if (input) value = input->getFloat();
 }
+std::unique_ptr<GameplayNode> FloatNode::clone() const {
+    auto up = std::make_unique<FloatNode>();
+    up->value = value;
+    up->input = input;
+    return up;
+}
 
 void KeyInputNode::execute(float) {
     pressed = Input::isKeyPressed(key);
+}
+std::unique_ptr<GameplayNode> KeyInputNode::clone() const {
+    auto up = std::make_unique<KeyInputNode>();
+    up->key = key;
+    up->pressed = pressed;
+    return up;
 }
 
 void AndNode::execute(float) {
     bool av = a ? a->getBool() : false;
     bool bv = b ? b->getBool() : false;
     value = av && bv;
+}
+std::unique_ptr<GameplayNode> AndNode::clone() const {
+    auto up = std::make_unique<AndNode>();
+    up->value = value;
+    up->a = a;
+    up->b = b;
+    return up;
 }
 
 void BranchNode::execute(float) {
@@ -27,10 +47,25 @@ void BranchNode::execute(float) {
     float fv = falseValue ? falseValue->getFloat() : 0.0f;
     value = c ? tv : fv;
 }
+std::unique_ptr<GameplayNode> BranchNode::clone() const {
+    auto up = std::make_unique<BranchNode>();
+    up->value = value;
+    up->condition = condition;
+    up->trueValue = trueValue;
+    up->falseValue = falseValue;
+    return up;
+}
 
 void SetFloatParamNode::execute(float) {
     if (!target || !input || !member) return;
     target->*member = input->getFloat();
+}
+std::unique_ptr<GameplayNode> SetFloatParamNode::clone() const {
+    auto up = std::make_unique<SetFloatParamNode>();
+    up->input = input;
+    up->target = target;
+    up->member = member;
+    return up;
 }
 
 void SetBoolParamNode::execute(float) {
@@ -40,6 +75,14 @@ void SetBoolParamNode::execute(float) {
     target->*member = edge;
     prev = cur;
 }
+std::unique_ptr<GameplayNode> SetBoolParamNode::clone() const {
+    auto up = std::make_unique<SetBoolParamNode>();
+    up->input = input;
+    up->target = target;
+    up->member = member;
+    up->prev = prev;
+    return up;
+}
 
 void TimerNode::execute(float dt) {
     t += dt;
@@ -47,6 +90,11 @@ void TimerNode::execute(float dt) {
     else if (t < 4.0f) value = 1.0f;
     else if (t < 6.0f) value = 2.5f;
     else { t = 0.0f; value = 0.0f; }
+}
+std::unique_ptr<GameplayNode> TimerNode::clone() const {
+    auto up = std::make_unique<TimerNode>();
+    up->value = value;
+    return up;
 }
 
 void GameplayGraph::setTarget(AnimParams* p) {
@@ -64,6 +112,43 @@ void GameplayGraph::execute(float dt) {
 void GameplayGraph::execute(float dt, AnimParams& outParams) {
     setTarget(&outParams);
     execute(dt);
+}
+
+std::shared_ptr<GameplayGraph> GameplayGraph::clone(AnimParams* newTarget) const {
+    auto g = std::make_shared<GameplayGraph>();
+    g->target = newTarget;
+    std::unordered_map<const GameplayNode*, GameplayNode*> remap;
+    for (auto& n : nodes) {
+        auto c = n->clone();
+        remap[n.get()] = c.get();
+        g->nodes.push_back(std::move(c));
+    }
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        auto* src = nodes[i].get();
+        auto* dst = g->nodes[i].get();
+        if (auto* s = dynamic_cast<FloatNode*>(src)) {
+            auto* d = static_cast<FloatNode*>(dst);
+            if (s->input) d->input = remap[s->input];
+        } else if (auto* s = dynamic_cast<AndNode*>(src)) {
+            auto* d = static_cast<AndNode*>(dst);
+            if (s->a) d->a = remap[s->a];
+            if (s->b) d->b = remap[s->b];
+        } else if (auto* s = dynamic_cast<BranchNode*>(src)) {
+            auto* d = static_cast<BranchNode*>(dst);
+            if (s->condition) d->condition = remap[s->condition];
+            if (s->trueValue) d->trueValue = remap[s->trueValue];
+            if (s->falseValue) d->falseValue = remap[s->falseValue];
+        } else if (auto* s = dynamic_cast<SetFloatParamNode*>(src)) {
+            auto* d = static_cast<SetFloatParamNode*>(dst);
+            if (s->input) d->input = remap[s->input];
+            d->target = newTarget;
+        } else if (auto* s = dynamic_cast<SetBoolParamNode*>(src)) {
+            auto* d = static_cast<SetBoolParamNode*>(dst);
+            if (s->input) d->input = remap[s->input];
+            d->target = newTarget;
+        }
+    }
+    return g;
 }
 
 std::shared_ptr<GameplayGraph> GameplayGraph::makeMinimal(AnimParams* target) {
@@ -100,7 +185,6 @@ std::shared_ptr<GameplayGraph> GameplayGraph::makeMinimal(AnimParams* target) {
 
     auto* timer = g->addNode<TimerNode>();
 
-    // hasInput = W (for minimal, if W pressed use input, else timer)
     auto* finalBranch = g->addNode<BranchNode>();
     finalBranch->condition = w;
     finalBranch->trueValue = branchRun;
@@ -154,10 +238,6 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
         }
         if (node) map[n.id] = node;
     }
-    // Wire links: for gameplay, toSlot 0 = input/condition, 1 = trueValue/B, 2 = falseValue/param etc
-    // For Branch: 0=condition, 1=trueValue, 2=falseValue
-    // For And: 0=a, 1=b
-    // For SetParam: 0=input
     for (auto& l : ed.links) {
         auto itTo = map.find(l.toNode);
         auto itFrom = map.find(l.fromNode);
@@ -179,7 +259,6 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
             if (l.toSlot == 0) f->input = from;
         }
     }
-    // Update Set* targets to current target (in case it changed)
     g->setTarget(target);
     return g;
 }
@@ -244,7 +323,6 @@ EditorGraph makeGameplayEditorGraph() {
     g.links.push_back({timerId, brFinal, 2});
     g.links.push_back({brFinal, setSpeedId, 0});
     g.links.push_back({spaceId, setJumpId, 0});
-    // No output needed for gameplay graph (it writes to params), but set one for completeness
     g.outputNode = setSpeedId;
     return g;
 }

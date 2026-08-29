@@ -5,7 +5,9 @@
 #include "core/anim_state_machine.h"
 #include "core/animation_system.h"
 #include "core/bounds_component.h"
-#include "core/mesh.h"
+#include "core/gameplay_component.h"
+#include "core/gameplay_graph.h"
+#include "imgui.h"
 #include "core/gltf_loader.h"
 #include "core/skeleton.h"
 #include "core/mesh_component.h"
@@ -76,20 +78,30 @@ Engine::Engine(Window& window)
                     animC.machine = makeDefaultStateMachine(animC.animations, skelC.skeleton, jumpDur);
                     std::printf("[state] machine built: %zu states (Idle/Locomotion/Jump)\n", animC.animations.size());
                     std::fflush(stdout);
-                    // Task 031: editor mirrors locomotion graph for visual editing
+                    // Task 031: editor mirrors locomotion graph for visual editing (once)
                     if (!editor_) {
                         editorGraph_ = makeLocomotionEditorGraph(animC.animations);
                         editorBaseSkeleton_ = skelC.skeleton;
                         editor_ = std::make_unique<AnimGraphEditor>(editorGraph_);
                         std::printf("[editor] graph editor ready: %zu nodes, output %d\n", editorGraph_.nodes.size(), editorGraph_.outputNode);
                         std::fflush(stdout);
-                        // Task 034: gameplay graph (Input -> Logic -> Action)
-                        if (!gameplayGraph_) {
-                            gameplayGraph_ = GameplayGraph::makeMinimal(nullptr);
-                            std::printf("[gameplay] graph ready: %zu nodes\n", gameplayGraph_->nodes.size());
+                        // Task 035: gameplay editor (per-entity, F2)
+                        if (!gameplayEditor_) {
+                            gameplayEditorGraph_ = makeGameplayEditorGraph();
+                            gameplayEditor_ = std::make_unique<AnimGraphEditor>(gameplayEditorGraph_);
+                            gameplayEditorTarget_ = e;
+                            std::printf("[gameplay] editor ready: %zu nodes\n", gameplayEditorGraph_.nodes.size());
                             std::fflush(stdout);
                         }
-                        // Task 032: try to load persisted graph and override Locomotion
+                    }
+                    // Task 035: per-entity gameplay graph (clone template per entity)
+                    {
+                        GameplayComponent gc;
+                        gc.graph = GameplayGraph::makeMinimal(&animC.machine->params());
+                        scene_->registry().addComponent<GameplayComponent>(e, std::move(gc));
+                    }
+                    // Task 032: try to load persisted graph and override Locomotion (once)
+                    if (editor_ && editorGraph_.nodes.size() > 0) {
                         const std::vector<std::string> candidates = {
                             "assets/animations/locomotion.graph.json",
                             "build/assets/animations/locomotion.graph.json",
@@ -105,19 +117,24 @@ Engine::Engine(Window& window)
                             auto res = buildRuntimeGraph(loaded, skelC.skeleton, animC.animations);
                             if (!res.graph) res = buildRuntimeGraph(loaded, skelC.skeleton);
                             if (res.graph) {
-                                editorGraph_ = loaded;
-                                editor_ = std::make_unique<AnimGraphEditor>(editorGraph_);
-                                editorBaseSkeleton_ = skelC.skeleton;
-                                if (animC.machine) animC.machine->setStateGraph("Locomotion", res.graph);
-                                std::printf("[asset] loaded %s (%zu nodes) and applied to Locomotion\n", loadedPath.c_str(), loaded.nodes.size());
-                                std::fflush(stdout);
+                                // Only override first entity's locomotion when loading persisted graph
+                                static bool firstLoad = true;
+                                if (firstLoad) {
+                                    editorGraph_ = loaded;
+                                    editor_ = std::make_unique<AnimGraphEditor>(editorGraph_);
+                                    editorBaseSkeleton_ = skelC.skeleton;
+                                    if (animC.machine) animC.machine->setStateGraph("Locomotion", res.graph);
+                                    std::printf("[asset] loaded %s (%zu nodes) and applied to Locomotion\n", loadedPath.c_str(), loaded.nodes.size());
+                                    std::fflush(stdout);
+                                    firstLoad = false;
+                                }
                             } else {
                                 std::printf("[asset] build failed for %s: %s\n", loadedPath.c_str(), res.error.c_str());
                                 std::fflush(stdout);
                             }
                         } else {
-                            std::printf("[asset] no persisted graph found, using default\n");
-                            std::fflush(stdout);
+                            static bool once = true;
+                            if (once) { std::printf("[asset] no persisted graph found, using default\n"); std::fflush(stdout); once = false; }
                         }
                     }
                     scene_->registry().addComponent<AnimationComponent>(e, std::move(animC));
@@ -150,13 +167,16 @@ void Engine::run() {
     RenderSystem renderSystem(*renderer_);
 
     while (!window_.shouldClose()) {
-        time_.beginFrame();
         window_.pollEvents();
-
+        time_.beginFrame();
         // Task 031: F1 toggles node editor; overlay recorded inside main pass.
         static bool wasF1 = false;
+        static bool wasF2 = false;
         bool f1 = Input::isKeyPressed(GLFW_KEY_F1);
+        bool f2 = Input::isKeyPressed(GLFW_KEY_F2);
         if (f1 && !wasF1) editorOpen_ = !editorOpen_;
+        if (f2 && !wasF2) gameplayEditorOpen_ = !gameplayEditorOpen_;
+        wasF1 = f1; wasF2 = f2;
         renderer_->editorBeginFrame();
         if (editorOpen_ && editor_) {
             // Task 033: editor resolves clip indices against live animations.
@@ -173,7 +193,56 @@ void Engine::run() {
                 std::fflush(stdout);
             });
         }
+        if (gameplayEditorOpen_ && gameplayEditor_) {
+            auto* animArr = scene_->registry().tryGetComponentArray<AnimationComponent>();
+            auto* gameplayArr = scene_->registry().tryGetComponentArray<GameplayComponent>();
+            if (gameplayArr && animArr && animArr->size()) {
+                if (gameplayEditorTarget_ == 0 || !gameplayArr->has(gameplayEditorTarget_)) {
+                    for (size_t i=0;i<animArr->size();++i) {
+                        Entity e = animArr->entityAt(i);
+                        if (gameplayArr->has(e)) { gameplayEditorTarget_ = e; break; }
+                    }
+                    if (gameplayEditorTarget_ == 0) gameplayEditorTarget_ = animArr->entityAt(0);
+                }
+                ImGui::Begin("Gameplay Editor Target");
+                for (size_t i=0;i<animArr->size();++i) {
+                    Entity e = animArr->entityAt(i);
+                    if (!gameplayArr->has(e)) continue;
+                    bool sel = (e == gameplayEditorTarget_);
+                    char buf[32]; std::snprintf(buf, sizeof(buf), "Entity %u", e);
+                    if (ImGui::Selectable(buf, sel)) gameplayEditorTarget_ = e;
+                }
+                ImGui::End();
+            }
+            gameplayEditor_->draw(editorBaseSkeleton_, [&](std::shared_ptr<AnimGraph> g) {
+                (void)g;
+            });
+            if (ImGui::Begin("Gameplay Graph Editor")) {
+                if (ImGui::Button("Apply Gameplay to Selected Entity")) {
+                    auto* gArr = scene_->registry().tryGetComponentArray<GameplayComponent>();
+                    if (gArr && gArr->has(gameplayEditorTarget_)) {
+                        auto& gc = gArr->get(gameplayEditorTarget_);
+                        auto* animArr2 = scene_->registry().tryGetComponentArray<AnimationComponent>();
+                        AnimParams* targetParams = nullptr;
+                        if (animArr2 && animArr2->has(gameplayEditorTarget_)) {
+                            auto& ac = animArr2->get(gameplayEditorTarget_);
+                            if (ac.machine) targetParams = &ac.machine->params();
+                        }
+                        if (targetParams) {
+                            auto newGraph = buildGameplayGraph(gameplayEditor_->getGraph(), targetParams);
+                            if (newGraph) {
+                                gc.graph = newGraph;
+                                std::printf("[gameplay] applied editor graph to entity %u (%zu nodes)\n", gameplayEditorTarget_, newGraph->nodes.size());
+                                std::fflush(stdout);
+                            }
+                        }
+                    }
+                }
+                ImGui::End();
+            }
+        }
         renderer_->editorEndFrame();
+
 
         update(time_.deltaTime());
         world_->update(scene_->camera().position);
@@ -214,12 +283,16 @@ void Engine::update(double deltaTime) {
             auto& animC = animArray->get(e);
             if (animC.animations.empty() || !animC.playing) continue;
             if (!animC.machine) continue;
-            // Gameplay -> Animation params (Input -> Logic -> Action)
-            if (gameplayGraph_) gameplayGraph_->execute(dt, animC.machine->params());
+            // Gameplay -> Animation params (Input -> Logic -> Action) per-entity
+            auto* gameplayArray = scene_->registry().tryGetComponentArray<GameplayComponent>();
+            if (auto* gComp = gameplayArray ? gameplayArray->tryGet(e) : nullptr) {
+                if (gComp->graph) gComp->graph->execute(dt, animC.machine->params());
+            }
             animC.machine->evaluateInto(skelC.skeleton, dt);
-            renderer_->updateJoints(skelC.skeleton.finalMatrices);
-            uploaded = true;
-            break;
+            if (!uploaded) {
+                renderer_->updateJoints(skelC.skeleton.finalMatrices);
+                uploaded = true;
+            }
         }
     }
     if (!uploaded) {
