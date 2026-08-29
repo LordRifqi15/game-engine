@@ -13,6 +13,8 @@ namespace engine {
 
 bool saveGraph(const EditorGraph& graph, const std::string& path);
 bool loadGraph(EditorGraph& outGraph, const std::string& path);
+// Parse from an in-memory JSON string (AI-generated graphs, tests).
+bool loadGraphFromString(EditorGraph& outGraph, const std::string& jsonText);
 
 // Helpers for engine integration: load + build runtime in one step.
 // Returns nullptr on failure.

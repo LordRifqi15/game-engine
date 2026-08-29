@@ -153,6 +153,9 @@ void Engine::run() {
         if (f1 && !wasF1) editorOpen_ = !editorOpen_;
         renderer_->editorBeginFrame();
         if (editorOpen_ && editor_) {
+            // Task 033: editor resolves clip indices against live animations.
+            auto* animArr = scene_->registry().tryGetComponentArray<AnimationComponent>();
+            editor_->setAnimations(animArr && animArr->size() ? &animArr->get(animArr->entityAt(0)).animations : nullptr);
             editor_->draw(editorBaseSkeleton_, [&](std::shared_ptr<AnimGraph> g) {
                 auto* arr = scene_->registry().tryGetComponentArray<AnimationComponent>();
                 if (!arr) return;

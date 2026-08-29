@@ -109,12 +109,9 @@ bool saveGraph(const EditorGraph& graph, const std::string& path) {
     }
 }
 
-bool loadGraph(EditorGraph& outGraph, const std::string& path) {
+bool loadGraphFromString(EditorGraph& outGraph, const std::string& jsonText) {
     try {
-        std::ifstream f(path);
-        if (!f) return false;
-        json j;
-        f >> j;
+        json j = json::parse(jsonText);
         EditorGraph g;
         int maxId = 0;
         if (j.contains("nodes")) {
@@ -164,6 +161,14 @@ bool loadGraph(EditorGraph& outGraph, const std::string& path) {
         return false;
     }
 }
+
+bool loadGraph(EditorGraph& outGraph, const std::string& path) {
+    std::ifstream f(path);
+    if (!f) return false;
+    std::string text((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    return loadGraphFromString(outGraph, text);
+}
+
 
 std::shared_ptr<AnimGraph> loadGraphAsRuntime(const std::string& path, const Skeleton& baseSkeleton) {
     EditorGraph eg;

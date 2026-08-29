@@ -1,10 +1,10 @@
 #include "core/anim_editor.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <functional>
 #include <map>
 #include <set>
-#include <utility>
 
 namespace engine {
 
@@ -112,12 +112,19 @@ EditorBuildResult buildRuntimeGraph(const EditorGraph& ed, const Skeleton& baseS
                                     const std::vector<Animation>& anims) {
     EditorGraph resolved = ed;
     for (auto& n : resolved.nodes) {
-        if (n.type == "Clip" && n.clipIndex >= 0 && n.clipIndex < (int)anims.size()) {
+        if (n.type != "Clip" || n.clipIndex < 0) continue;
+        if (n.clipIndex < (int)anims.size()) {
             n.clip = anims[n.clipIndex];
+        } else if (!anims.empty()) {
+            // Missing clip -> fallback to last available, warn.
+            std::fprintf(stderr, "[anim] clip index %d missing (have %zu), falling back to last\n",
+                         n.clipIndex, anims.size());
+            n.clip = anims.back();
         }
     }
     return buildRuntimeGraph(resolved, baseSkeleton);
 }
+
 
 EditorGraph makeLocomotionEditorGraph(const std::vector<Animation>& anims) {
     EditorGraph g;

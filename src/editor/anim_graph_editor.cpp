@@ -1,5 +1,6 @@
 #include "editor/anim_graph_editor.h"
 
+#include "core/anim_graph_ai.h"
 #include "core/anim_graph_asset.h"
 #include "imgui.h"
 
@@ -100,7 +101,31 @@ void AnimGraphEditor::draw(const Skeleton& baseSkeleton,
         return;
     }
     ImGui::Text("Editor Active: %zu nodes, output %d", ed_.nodes.size(), ed_.outputNode);
-    ImGui::Text("Test Text - Editor Visible");
+
+    // Task 033: prompt -> AI-generated graph.
+    ImGui::SetNextItemWidth(360);
+    ImGui::InputText("prompt", prompt_, sizeof(prompt_));
+    ImGui::SameLine();
+    if (ImGui::Button("Generate Graph")) {
+        std::string json = generateGraphJSON(prompt_);
+        EditorGraph gen;
+        if (loadGraphFromString(gen, json)) {
+            ed_ = std::move(gen);
+            selected_ = -1;
+            std::printf("[ai] generated graph for \"%s\": %zu nodes, output %d\n",
+                        prompt_, ed_.nodes.size(), ed_.outputNode);
+            std::fflush(stdout);
+            // Auto-apply so the generated behavior runs immediately.
+            EditorBuildResult r = anims_ ? buildRuntimeGraph(ed_, baseSkeleton, *anims_)
+                                         : buildRuntimeGraph(ed_, baseSkeleton);
+            if (r.graph) onApply(r.graph);
+            else std::printf("[ai] generated graph build failed: %s\n", r.error.c_str());
+        } else {
+            std::printf("[ai] invalid JSON from generator (rejected)\n");
+        }
+        std::fflush(stdout);
+    }
+    ImGui::SameLine();
 
     // Toolbar: add nodes + apply.
     if (ImGui::Button("+ Clip")) {
@@ -151,7 +176,9 @@ void AnimGraphEditor::draw(const Skeleton& baseSkeleton,
     for (auto& n : ed_.nodes) drawNode(n);
     ImGui::EndChild();
     // Apply: editor graph -> runtime graph -> caller hook.
-    EditorBuildResult built = buildRuntimeGraph(ed_, baseSkeleton);
+    EditorBuildResult built = anims_ ? buildRuntimeGraph(ed_, baseSkeleton, *anims_)
+                                     : buildRuntimeGraph(ed_, baseSkeleton);
+
     if (!built.error.empty()) {
         ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", built.error.c_str());
     } else {
