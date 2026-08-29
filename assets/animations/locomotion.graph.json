@@ -1,0 +1,115 @@
+{
+  "links": [
+    {
+      "from": 2,
+      "to": 6,
+      "toSlot": 0
+    },
+    {
+      "from": 5,
+      "to": 6,
+      "toSlot": 1
+    },
+    {
+      "from": 3,
+      "to": 5,
+      "toSlot": 0
+    },
+    {
+      "from": 4,
+      "to": 5,
+      "toSlot": 1
+    },
+    {
+      "from": 1,
+      "to": 5,
+      "toSlot": 2
+    },
+    {
+      "from": 1,
+      "to": 6,
+      "toSlot": 2
+    }
+  ],
+  "nodes": [
+    {
+      "id": 1,
+      "name": "Speed",
+      "pos": [
+        480.0,
+        200.0
+      ],
+      "type": "Param",
+      "value": 0.0
+    },
+    {
+      "clip": 0,
+      "clipData": {
+        "channels": [],
+        "duration": 1.0,
+        "name": "Idle",
+        "samplers": []
+      },
+      "id": 2,
+      "name": "Idle",
+      "pos": [
+        40.0,
+        40.0
+      ],
+      "type": "Clip"
+    },
+    {
+      "clip": 1,
+      "clipData": {
+        "channels": [],
+        "duration": 1.0,
+        "name": "Walk",
+        "samplers": []
+      },
+      "id": 3,
+      "name": "Walk",
+      "pos": [
+        40.0,
+        220.0
+      ],
+      "type": "Clip"
+    },
+    {
+      "clip": 1,
+      "clipData": {
+        "channels": [],
+        "duration": 1.0,
+        "name": "Walk",
+        "samplers": []
+      },
+      "id": 4,
+      "name": "Walk",
+      "pos": [
+        40.0,
+        400.0
+      ],
+      "type": "Clip"
+    },
+    {
+      "id": 5,
+      "inMax": 2.5,
+      "inMin": 1.5,
+      "pos": [
+        280.0,
+        260.0
+      ],
+      "type": "Blend"
+    },
+    {
+      "id": 6,
+      "inMax": 1.0,
+      "inMin": 0.10000000149011612,
+      "pos": [
+        520.0,
+        120.0
+      ],
+      "type": "Blend"
+    }
+  ],
+  "output": 6
+}

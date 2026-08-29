@@ -1,5 +1,6 @@
 #include "editor/anim_graph_editor.h"
 
+#include "core/anim_graph_asset.h"
 #include "imgui.h"
 
 #include <algorithm>
@@ -149,15 +150,55 @@ void AnimGraphEditor::draw(const Skeleton& baseSkeleton,
     ImGui::BeginChild("canvas", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()), false);
     for (auto& n : ed_.nodes) drawNode(n);
     ImGui::EndChild();
-
     // Apply: editor graph -> runtime graph -> caller hook.
     EditorBuildResult built = buildRuntimeGraph(ed_, baseSkeleton);
     if (!built.error.empty()) {
         ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", built.error.c_str());
-    } else if (ImGui::Button("Apply to runtime")) {
-        onApply(built.graph);
+    } else {
+        if (ImGui::Button("Apply to runtime")) {
+            onApply(built.graph);
+        }
+        ImGui::SameLine();
+        static char savePath[256] = "assets/animations/locomotion.graph.json";
+        ImGui::SetNextItemWidth(220);
+        ImGui::InputText("##savepath", savePath, sizeof(savePath));
+        ImGui::SameLine();
+        if (ImGui::Button("Save")) {
+            bool ok = saveGraph(ed_, savePath);
+            // Also save to alternate cwd location for robustness (build/ vs root)
+            std::string alt = std::string(savePath);
+            if (alt.rfind("assets/", 0) == 0) {
+                std::string buildAlt = std::string("build/") + alt;
+                saveGraph(ed_, buildAlt);
+            } else if (alt.rfind("build/assets/", 0) == 0) {
+                std::string rootAlt = alt.substr(6);
+                saveGraph(ed_, rootAlt);
+            }
+            if (ok) std::printf("[asset] saved %s (%zu nodes)\n", savePath, ed_.nodes.size());
+            else std::printf("[asset] save failed %s\n", savePath);
+            std::fflush(stdout);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Load")) {
+            EditorGraph loaded;
+            bool ok = loadGraph(loaded, savePath);
+            if (!ok) {
+                // Try alternate locations
+                std::string alt = std::string(savePath);
+                if (alt.rfind("assets/", 0) == 0) ok = loadGraph(loaded, std::string("build/") + alt);
+                if (!ok && alt.rfind("build/assets/", 0) == 0) ok = loadGraph(loaded, alt.substr(6));
+                if (!ok) ok = loadGraph(loaded, std::string("../") + savePath);
+            }
+            if (ok) {
+                ed_ = std::move(loaded);
+                std::printf("[asset] loaded %s (%zu nodes)\n", savePath, ed_.nodes.size());
+            } else {
+                std::printf("[asset] load failed %s\n", savePath);
+            }
+            std::fflush(stdout);
+        }
     }
     ImGui::End();
-}
 
 } // namespace engine
+}

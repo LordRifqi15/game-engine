@@ -37,6 +37,7 @@ add_executable(engine
     src/core/anim_graph.cpp
     src/core/anim_state_machine.cpp
     src/core/anim_editor.cpp
+    src/core/anim_graph_asset.cpp
     src/editor/anim_graph_editor.cpp
     src/platform/window.cpp
     src/platform/input.cpp

@@ -1,6 +1,7 @@
 #include "core/engine.h"
 
 #include "core/anim_graph.h"
+#include "core/anim_graph_asset.h"
 #include "core/anim_state_machine.h"
 #include "core/animation_system.h"
 #include "core/bounds_component.h"
@@ -82,6 +83,36 @@ Engine::Engine(Window& window)
                         editor_ = std::make_unique<AnimGraphEditor>(editorGraph_);
                         std::printf("[editor] graph editor ready: %zu nodes, output %d\n", editorGraph_.nodes.size(), editorGraph_.outputNode);
                         std::fflush(stdout);
+                        // Task 032: try to load persisted graph and override Locomotion
+                        const std::vector<std::string> candidates = {
+                            "assets/animations/locomotion.graph.json",
+                            "build/assets/animations/locomotion.graph.json",
+                            "../assets/animations/locomotion.graph.json"
+                        };
+                        EditorGraph loaded;
+                        bool loadedOk = false;
+                        std::string loadedPath;
+                        for (auto& p : candidates) {
+                            if (loadGraph(loaded, p)) { loadedOk = true; loadedPath = p; break; }
+                        }
+                        if (loadedOk) {
+                            auto res = buildRuntimeGraph(loaded, skelC.skeleton, animC.animations);
+                            if (!res.graph) res = buildRuntimeGraph(loaded, skelC.skeleton);
+                            if (res.graph) {
+                                editorGraph_ = loaded;
+                                editor_ = std::make_unique<AnimGraphEditor>(editorGraph_);
+                                editorBaseSkeleton_ = skelC.skeleton;
+                                if (animC.machine) animC.machine->setStateGraph("Locomotion", res.graph);
+                                std::printf("[asset] loaded %s (%zu nodes) and applied to Locomotion\n", loadedPath.c_str(), loaded.nodes.size());
+                                std::fflush(stdout);
+                            } else {
+                                std::printf("[asset] build failed for %s: %s\n", loadedPath.c_str(), res.error.c_str());
+                                std::fflush(stdout);
+                            }
+                        } else {
+                            std::printf("[asset] no persisted graph found, using default\n");
+                            std::fflush(stdout);
+                        }
                     }
                     scene_->registry().addComponent<AnimationComponent>(e, std::move(animC));
                 }

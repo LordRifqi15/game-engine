@@ -47,8 +47,7 @@ EditorBuildResult buildRuntimeGraph(const EditorGraph& ed, const Skeleton& baseS
     const EditorNode* outNode = ed.find(ed.outputNode);
     if (!outNode) { res.error = "no output node selected"; return res; }
 
-    // Cycle detection over links (any cycle recurses forever in evaluate).
-    std::map<int, std::vector<int>> deps; // toNode <- fromNodes
+    std::map<int, std::vector<int>> deps;
     for (const auto& l : ed.links) deps[l.toNode].push_back(l.fromNode);
     std::function<bool(int, std::set<int>&)> cyclic = [&](int n, std::set<int>& path) -> bool {
         if (path.count(n)) return true;
@@ -63,12 +62,12 @@ EditorBuildResult buildRuntimeGraph(const EditorGraph& ed, const Skeleton& baseS
     std::set<int> path;
     if (cyclic(ed.outputNode, path)) { res.error = "graph has a cycle"; return res; }
 
-    // Create nodes (all first, wire after — pointers valid regardless of order).
-    std::map<int, AnimNode*> runtime;      // editor id -> pose node (Clip/Blend)
-    std::map<int, FloatParameterNode*> params; // editor id -> param node
+    std::map<int, AnimNode*> runtime;
+    std::map<int, FloatParameterNode*> params;
     for (const auto& n : ed.nodes) {
         if (n.type == "Clip") {
-            auto clip = std::make_unique<ClipNode>(n.clip);
+            Animation clipData = n.clip;
+            auto clip = std::make_unique<ClipNode>(clipData);
             clip->playbackSpeed = 1.0f;
             runtime[n.id] = clip.get();
             graph->ownedNodes.push_back(std::move(clip));
@@ -87,10 +86,9 @@ EditorBuildResult buildRuntimeGraph(const EditorGraph& ed, const Skeleton& baseS
         }
     }
 
-    // Wire links.
     for (const auto& l : ed.links) {
         auto* toBlend = dynamic_cast<BlendNode*>(runtime[l.toNode]);
-        if (!toBlend) continue; // only Blend consumes inputs
+        if (!toBlend) continue;
         const EditorNode* from = ed.find(l.fromNode);
         if (!from) continue;
         if (from->type == "Param") {
@@ -110,23 +108,34 @@ EditorBuildResult buildRuntimeGraph(const EditorGraph& ed, const Skeleton& baseS
     return res;
 }
 
+EditorBuildResult buildRuntimeGraph(const EditorGraph& ed, const Skeleton& baseSkeleton,
+                                    const std::vector<Animation>& anims) {
+    EditorGraph resolved = ed;
+    for (auto& n : resolved.nodes) {
+        if (n.type == "Clip" && n.clipIndex >= 0 && n.clipIndex < (int)anims.size()) {
+            n.clip = anims[n.clipIndex];
+        }
+    }
+    return buildRuntimeGraph(resolved, baseSkeleton);
+}
+
 EditorGraph makeLocomotionEditorGraph(const std::vector<Animation>& anims) {
     EditorGraph g;
     EditorNode& param = g.nodes.emplace_back();
     param.id = g.nextId(); param.type = "Param"; param.name = "Speed";
     param.value = 0.0f; param.x = 480.0f; param.y = 200.0f;
-    int paramId = param.id; // copy: nodes vector reallocates below
+    int paramId = param.id;
 
-    auto addClip = [&](const Animation& a, float x, float y) {
+    auto addClip = [&](const Animation& a, int clipIdx, float x, float y) {
         EditorNode& n = g.nodes.emplace_back();
         n.id = g.nextId(); n.type = "Clip";
         n.name = a.name.empty() ? "Clip" : a.name;
-        n.clip = a; n.x = x; n.y = y;
+        n.clip = a; n.clipIndex = clipIdx; n.x = x; n.y = y;
         return n.id;
     };
-    int idleId = addClip(anims.size() > 0 ? anims[0] : Animation{}, 40.0f, 40.0f);
-    int walkId = addClip(anims.size() > 1 ? anims[1] : Animation{}, 40.0f, 220.0f);
-    int runId  = addClip(anims.size() > 2 ? anims[2] : (anims.size() > 1 ? anims[1] : Animation{}), 40.0f, 400.0f);
+    int idleId = addClip(anims.size() > 0 ? anims[0] : Animation{}, 0, 40.0f, 40.0f);
+    int walkId = addClip(anims.size() > 1 ? anims[1] : Animation{}, 1, 40.0f, 220.0f);
+    int runId  = addClip(anims.size() > 2 ? anims[2] : (anims.size() > 1 ? anims[1] : Animation{}), anims.size() > 2 ? 2 : (anims.size() > 1 ? 1 : -1), 40.0f, 400.0f);
 
     auto addBlend = [&](float x, float y, float mn, float mx) {
         EditorNode& n = g.nodes.emplace_back();
