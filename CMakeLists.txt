@@ -39,6 +39,7 @@ add_executable(engine
     src/core/anim_editor.cpp
     src/core/anim_graph_asset.cpp
     src/core/anim_graph_ai.cpp
+    src/core/gameplay_graph.cpp
     src/editor/anim_graph_editor.cpp
     src/platform/window.cpp
     src/platform/input.cpp

@@ -1,0 +1,105 @@
+#pragma once
+
+#include "core/anim_state_machine.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace engine {
+
+struct EditorGraph; // forward for visual editor bridge
+
+struct GameplayNode {
+    virtual ~GameplayNode() = default;
+    virtual void execute(float dt) = 0;
+    virtual std::string typeName() const = 0;
+    virtual float getFloat() const { return 0.0f; }
+    virtual bool getBool() const { return false; }
+};
+
+struct FloatNode : GameplayNode {
+    float value = 0.0f;
+    GameplayNode* input = nullptr;
+    float getFloat() const override { return value; }
+    void execute(float dt) override;
+    std::string typeName() const override { return "Float"; }
+};
+
+struct KeyInputNode : GameplayNode {
+    int key = 0;
+    bool pressed = false;
+    bool getBool() const override { return pressed; }
+    void execute(float dt) override;
+    std::string typeName() const override { return "KeyInput"; }
+};
+
+struct AndNode : GameplayNode {
+    GameplayNode* a = nullptr;
+    GameplayNode* b = nullptr;
+    bool value = false;
+    bool getBool() const override { return value; }
+    void execute(float dt) override;
+    std::string typeName() const override { return "And"; }
+};
+
+struct BranchNode : GameplayNode {
+    GameplayNode* condition = nullptr;
+    GameplayNode* trueValue = nullptr;
+    GameplayNode* falseValue = nullptr;
+    float value = 0.0f;
+    float getFloat() const override { return value; }
+    void execute(float dt) override;
+    std::string typeName() const override { return "Branch"; }
+};
+
+struct SetFloatParamNode : GameplayNode {
+    GameplayNode* input = nullptr;
+    AnimParams* target = nullptr;
+    float AnimParams::* member = nullptr;
+    void execute(float dt) override;
+    std::string typeName() const override { return "SetFloatParam"; }
+};
+
+struct SetBoolParamNode : GameplayNode {
+    GameplayNode* input = nullptr;
+    AnimParams* target = nullptr;
+    bool AnimParams::* member = nullptr;
+    bool prev = false;
+    void execute(float dt) override;
+    std::string typeName() const override { return "SetBoolParam"; }
+};
+
+struct TimerNode : GameplayNode {
+    float value = 0.0f;
+    float getFloat() const override { return value; }
+    void execute(float dt) override;
+    std::string typeName() const override { return "Timer"; }
+private:
+    float t = 0.0f;
+};
+
+struct GameplayGraph {
+    std::vector<std::unique_ptr<GameplayNode>> nodes;
+    AnimParams* target = nullptr;
+
+    void setTarget(AnimParams* p);
+    void execute(float dt);
+    void execute(float dt, AnimParams& outParams);
+
+    template <typename T, typename... Args>
+    T* addNode(Args&&... args) {
+        auto up = std::make_unique<T>(std::forward<Args>(args)...);
+        T* ptr = up.get();
+        nodes.push_back(std::move(up));
+        return ptr;
+    }
+
+    static std::shared_ptr<GameplayGraph> makeMinimal(AnimParams* target);
+};
+
+// Editor -> GameplayGraph bridge (for visual editing of gameplay logic)
+std::shared_ptr<GameplayGraph> buildGameplayGraph(const struct EditorGraph& ed, AnimParams* target);
+struct EditorGraph makeGameplayEditorGraph();
+
+} // namespace engine

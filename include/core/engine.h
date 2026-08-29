@@ -4,12 +4,14 @@
 
 #include "core/anim_editor.h"
 #include "core/camera_controller.h"
+#include "core/gameplay_graph.h"
 #include "core/job_system.h"
 #include "core/scene.h"
 #include "core/time.h"
 #include "core/world.h"
 
 #include "editor/anim_graph_editor.h"
+
 
 namespace engine {
 
@@ -50,6 +52,8 @@ private:
     EditorGraph editorGraph_;
     Skeleton editorBaseSkeleton_;
     bool editorOpen_ = true;
+    // Task 034: gameplay graph (Input -> Logic -> Action -> AnimParams)
+    std::shared_ptr<GameplayGraph> gameplayGraph_;
 };
 
 } // namespace engine

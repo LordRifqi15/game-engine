@@ -83,6 +83,12 @@ Engine::Engine(Window& window)
                         editor_ = std::make_unique<AnimGraphEditor>(editorGraph_);
                         std::printf("[editor] graph editor ready: %zu nodes, output %d\n", editorGraph_.nodes.size(), editorGraph_.outputNode);
                         std::fflush(stdout);
+                        // Task 034: gameplay graph (Input -> Logic -> Action)
+                        if (!gameplayGraph_) {
+                            gameplayGraph_ = GameplayGraph::makeMinimal(nullptr);
+                            std::printf("[gameplay] graph ready: %zu nodes\n", gameplayGraph_->nodes.size());
+                            std::fflush(stdout);
+                        }
                         // Task 032: try to load persisted graph and override Locomotion
                         const std::vector<std::string> candidates = {
                             "assets/animations/locomotion.graph.json",
@@ -192,39 +198,13 @@ void Engine::update(double deltaTime) {
     controller_.update(scene_->camera(), static_cast<float>(deltaTime));
 
     // Animation blending + state machine (Task 030) — auto demo fallback ensures
-    // transitions visible without manual input during headless capture.
+    // Task 034: gameplay graph drives animation params (no hardcoded WASD).
+    // The graph reads Input::* and writes to AnimParams, which the state
+    // machine then consumes. This keeps engine core free of gameplay logic.
     float dt = static_cast<float>(deltaTime);
     auto* skelArray = scene_->registry().tryGetComponentArray<SkeletonComponent>();
     auto* animArray = scene_->registry().tryGetComponentArray<AnimationComponent>();
     bool uploaded = false;
-
-    static float autoTimer = 0.0f;
-    autoTimer += dt;
-    float autoSpeed = 0.0f;
-    if (autoTimer < 2.0f) autoSpeed = 0.0f;          // Idle
-    else if (autoTimer < 4.0f) autoSpeed = 1.0f;    // Walk
-    else if (autoTimer < 6.0f) autoSpeed = 2.5f;    // Run
-    else {
-        autoTimer = 0.0f;
-        autoSpeed = 0.0f;
-    }
-
-    float inputSpeed = 0.0f;
-    bool hasInput = false;
-    if (Input::isKeyPressed(GLFW_KEY_W)) {
-        hasInput = true;
-        inputSpeed = Input::isKeyPressed(GLFW_KEY_LEFT_SHIFT) ? 2.5f : 1.0f;
-    } else if (Input::isKeyPressed(GLFW_KEY_S)) {
-        hasInput = true;
-        inputSpeed = 0.3f;
-    }
-    float desiredSpeed = hasInput ? inputSpeed : autoSpeed;
-
-    // Jump is edge-triggered so holding SPACE doesn't re-fire.
-    static bool prevSpace = false;
-    bool space = Input::isKeyPressed(GLFW_KEY_SPACE);
-    bool jumpPressed = space && !prevSpace;
-    prevSpace = space;
 
     if (skelArray && animArray) {
         for (size_t i = 0; i < skelArray->size(); ++i) {
@@ -233,10 +213,9 @@ void Engine::update(double deltaTime) {
             auto& skelC = skelArray->get(e);
             auto& animC = animArray->get(e);
             if (animC.animations.empty() || !animC.playing) continue;
-            // Task 030: state machine -> active graph -> pose. Engine only feeds params.
             if (!animC.machine) continue;
-            animC.machine->params().speed = desiredSpeed;
-            animC.machine->params().jumpPressed = jumpPressed;
+            // Gameplay -> Animation params (Input -> Logic -> Action)
+            if (gameplayGraph_) gameplayGraph_->execute(dt, animC.machine->params());
             animC.machine->evaluateInto(skelC.skeleton, dt);
             renderer_->updateJoints(skelC.skeleton.finalMatrices);
             uploaded = true;
