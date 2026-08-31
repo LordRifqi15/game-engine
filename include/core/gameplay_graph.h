@@ -21,6 +21,7 @@ struct GameplayNode {
     virtual std::string typeName() const = 0;
     virtual float getFloat() const { return 0.0f; }
     virtual bool getBool() const { return false; }
+    virtual glm::vec3 getVec3() const { return glm::vec3(0.0f); }
     virtual std::unique_ptr<GameplayNode> clone() const = 0;
 };
 
@@ -110,10 +111,11 @@ struct GameplayGraph {
         nodes.push_back(std::move(up));
         return ptr;
     }
-
     static std::shared_ptr<GameplayGraph> makeMinimal(AnimParams* target);
     // Task 036: autonomous NPC chase graph (Distance -> Compare -> MoveTowards + speed)
     static std::shared_ptr<GameplayGraph> makeNPCChase(AnimParams* target, float detectionRadius = 5.0f, float moveSpeed = 2.0f);
+    // Task 038: blackboard chase with LastSeenPos + StateTimer (Chase->Investigate->Idle)
+    static std::shared_ptr<GameplayGraph> makeBlackboardChase(AnimParams* target, float detectionRadius = 6.0f, float moveSpeed = 2.2f, float waitDuration = 3.0f);
 };
 
 // Editor -> GameplayGraph bridge (for visual editing of gameplay logic)

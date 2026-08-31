@@ -67,27 +67,34 @@ void MoveTowardsNode::execute(float) {
 void MoveTowardsNode::execute(const GraphContext& ctx, AnimParams& /*params*/) {
     bool en = enabled ? enabled->getBool() : enabledValue;
     if (!en) return;
+    glm::vec3 target = ctx.targetPosition;
+    if (ctx.blackboard) {
+        if (ctx.blackboard->getBool("IsSearching", false)) {
+            glm::vec3 lastSeen = ctx.blackboard->getVec3("LastSeenPos", target);
+            // Use LastSeenPos if it was set (non-zero or hasKey)
+            if (ctx.blackboard->hasKey("LastSeenPos")) target = lastSeen;
+        }
+    }
     // Prefer physics velocity path (Task 037), fallback to legacy direct position
     if (ctx.outPhysics) {
-        float dist = glm::distance(ctx.selfPosition, ctx.targetPosition);
+        float dist = glm::distance(ctx.selfPosition, target);
         if (dist <= 0.05f) return;
         if (dist < 0.001f) return;
         float spd = speed ? speed->getFloat() : speedValue;
-        glm::vec3 dir = glm::normalize(ctx.targetPosition - ctx.selfPosition);
+        glm::vec3 dir = glm::normalize(target - ctx.selfPosition);
         ctx.outPhysics->velocity.x = dir.x * spd;
         ctx.outPhysics->velocity.z = dir.z * spd;
-        // Rotation: face direction
         float yaw = std::atan2(dir.x, dir.z);
         if (ctx.outSelfRotation) *ctx.outSelfRotation = glm::angleAxis(yaw, glm::vec3(0, 1, 0));
         if (ctx.outSelfRotationEuler) ctx.outSelfRotationEuler->y = yaw;
         return;
     }
     if (!ctx.outSelfPosition) return;
-    float dist = glm::distance(*ctx.outSelfPosition, ctx.targetPosition);
+    float dist = glm::distance(*ctx.outSelfPosition, target);
     if (dist <= 0.05f) return;
     if (dist < 0.001f) return;
     float spd = speed ? speed->getFloat() : speedValue;
-    glm::vec3 dir = glm::normalize(ctx.targetPosition - *ctx.outSelfPosition);
+    glm::vec3 dir = glm::normalize(target - *ctx.outSelfPosition);
     *ctx.outSelfPosition += dir * spd * ctx.dt;
     float yaw = std::atan2(dir.x, dir.z);
     if (ctx.outSelfRotation) *ctx.outSelfRotation = glm::angleAxis(yaw, glm::vec3(0, 1, 0));

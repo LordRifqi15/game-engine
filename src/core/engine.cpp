@@ -9,7 +9,9 @@
 #include "core/gameplay_graph.h"
 #include "ecs/components/PhysicsComponent.hpp"
 #include "ecs/components/ColliderComponent.hpp"
+#include "ecs/components/BlackboardComponent.hpp"
 #include "modules/ai/GameplayNodesAI.hpp"
+#include "modules/ai/BlackboardNodes.hpp"
 #include "modules/ai/GraphContext.hpp"
 #include "imgui.h"
 #include "core/gltf_loader.h"
@@ -110,12 +112,16 @@ Engine::Engine(Window& window)
                         pc.linearDamping = 10.0f;
                         pc.useGravity = true;
                         pc.isGrounded = true;
+                        scene_->registry().addComponent<PhysicsComponent>(e, pc);
                         ::Engine::ColliderComponent col;
                         col.type = ::Engine::ColliderType::Sphere;
                         col.radius = 0.5f;
                         col.halfExtents = glm::vec3(0.5f, 1.0f, 0.5f);
                         col.centerOffset = glm::vec3(0.0f, 0.5f, 0.0f);
                         scene_->registry().addComponent<::Engine::ColliderComponent>(e, col);
+                        // Task 038: blackboard for player (optional)
+                        BlackboardComponent bb;
+                        scene_->registry().addComponent<BlackboardComponent>(e, bb);
                     }
                     if (editor_ && editorGraph_.nodes.size() > 0) {
                         const std::vector<std::string> candidates = {
@@ -184,6 +190,9 @@ Engine::Engine(Window& window)
                         col.halfExtents = glm::vec3(0.5f, 1.0f, 0.5f);
                         col.centerOffset = glm::vec3(0.0f, 0.5f, 0.0f);
                         scene_->registry().addComponent<::Engine::ColliderComponent>(npc, col);
+                        // Task 038: blackboard per NPC
+                        BlackboardComponent bb;
+                        scene_->registry().addComponent<BlackboardComponent>(npc, bb);
                     }
                     if (!gltfMeshes_.empty()) {
                         MeshComponent mc; mc.mesh = &gltfMeshes_.front();
@@ -203,12 +212,10 @@ Engine::Engine(Window& window)
                         animC2.animations.push_back(std::move(copy));
                     }
                     animC2.speed = 1.0f;
-                    animC2.playing = true;
-                    animC2.loop = true;
                     float jd = animC2.animations.size() > 1 && animC2.animations[1].duration > 0.0f ? animC2.animations[1].duration : 1.0f;
                     animC2.machine = makeDefaultStateMachine(animC2.animations, skelC2.skeleton, jd);
                     GameplayComponent gc;
-                    gc.graph = GameplayGraph::makeNPCChase(&animC2.machine->params(), 6.0f, 2.2f);
+                    gc.graph = GameplayGraph::makeBlackboardChase(&animC2.machine->params(), 6.0f, 2.2f, 3.0f);
                     scene_->registry().addComponent<GameplayComponent>(npc, std::move(gc));
                     scene_->registry().addComponent<AnimationComponent>(npc, std::move(animC2));
                     std::printf("[npc] spawned NPC %u at (%.1f,0,%.1f) chasing player %u\n", npc, tc.position.x, tc.position.z, playerEntity_);
@@ -350,7 +357,16 @@ void Engine::update(double deltaTime) {
     auto* transformArray = scene_->registry().tryGetComponentArray<TransformComponent>();
     auto* gameplayArray = scene_->registry().tryGetComponentArray<GameplayComponent>();
     auto* physArray = scene_->registry().tryGetComponentArray<PhysicsComponent>();
-
+    auto* bbArray = scene_->registry().tryGetComponentArray<BlackboardComponent>();
+    // Debug phys
+    static int dbgCount=0;
+    if (dbgCount++ % 90 == 0) {
+        std::printf("[phys] physArray %p bbArray %p player %u\n", (void*)physArray, (void*)bbArray, playerEntity_);
+        if (physArray) {
+            for (size_t i=0;i<physArray->size();++i) std::printf("  phys e %u vel %.2f,%.2f,%.2f\n", physArray->entityAt(i), physArray->get(physArray->entityAt(i)).velocity.x, physArray->get(physArray->entityAt(i)).velocity.y, physArray->get(physArray->entityAt(i)).velocity.z);
+        }
+        std::fflush(stdout);
+    }
     // Resolve player target position for NPCs (Task 036)
     glm::vec3 playerPos{0.0f};
     if (playerEntity_ != kInvalidEntity && transformArray && transformArray->has(playerEntity_)) {
@@ -361,7 +377,6 @@ void Engine::update(double deltaTime) {
             playerEntity_ = transformArray->entityAt(0);
         }
     }
-
     // 1. Gameplay & AI graphs (sets desired velocity / impulses) — per-entity
     if (skelArray && animArray) {
         for (size_t i = 0; i < skelArray->size(); ++i) {
@@ -377,12 +392,14 @@ void Engine::update(double deltaTime) {
             if (e != playerEntity_ && transformArray && transformArray->has(e) && physArray && physArray->has(e)) {
                 auto& tr = transformArray->get(e);
                 auto& phys = physArray->get(e);
+                BlackboardComponent* bb = bbArray ? bbArray->tryGet(e) : nullptr;
                 GraphContext ctx{};
                 ctx.selfEntity = static_cast<uint32_t>(e);
                 ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
                 ctx.selfPosition = tr.position;
                 ctx.targetPosition = playerPos;
                 ctx.outPhysics = &phys;
+                ctx.blackboard = bb;
                 ctx.outSelfRotationEuler = &tr.rotation;
                 ctx.dt = dt;
                 // Legacy fallback also set for rotation
@@ -391,6 +408,7 @@ void Engine::update(double deltaTime) {
             } else if (e != playerEntity_ && transformArray && transformArray->has(e)) {
                 // Fallback without physics (should not happen, but keep legacy)
                 auto& tr = transformArray->get(e);
+                BlackboardComponent* bb = bbArray ? bbArray->tryGet(e) : nullptr;
                 GraphContext ctx{};
                 ctx.selfEntity = static_cast<uint32_t>(e);
                 ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
@@ -398,6 +416,7 @@ void Engine::update(double deltaTime) {
                 ctx.targetPosition = playerPos;
                 ctx.outSelfPosition = &tr.position;
                 ctx.outSelfRotationEuler = &tr.rotation;
+                ctx.blackboard = bb;
                 ctx.dt = dt;
                 gComp->graph->execute(ctx, animC.machine->params());
             } else {
@@ -433,7 +452,6 @@ void Engine::update(double deltaTime) {
                 uploaded = true;
             }
         }
-    }
     if (!uploaded) {
         if (skelArray && skelArray->size() > 0) {
             auto& skelC = skelArray->get(skelArray->entityAt(0));
@@ -445,6 +463,24 @@ void Engine::update(double deltaTime) {
             renderer_->updateJoints(identity);
         }
     }
+    // Debug: periodic NPC blackboard/position log (every 60 frames)
+    {
+        static int frameCount = 0;
+        if (++frameCount % 90 == 0 && transformArray && bbArray) {
+            for (size_t i=0;i<transformArray->size();++i){
+                Entity e = transformArray->entityAt(i);
+                if (e==playerEntity_ || !bbArray->has(e) || !transformArray->has(e)) continue;
+                auto& tr = transformArray->get(e);
+                auto& bb = bbArray->get(e);
+                bool searching = bb.getBool("IsSearching", false);
+                glm::vec3 lastSeen = bb.getVec3("LastSeenPos", glm::vec3(0));
+                float speed = 0; if (physArray && physArray->has(e)) speed = glm::length(glm::vec2(physArray->get(e).velocity.x, physArray->get(e).velocity.z));
+                std::printf("[blackboard] NPC %u pos (%.2f,%.2f,%.2f) IsSearching %d LastSeen (%.1f,%.1f,%.1f) speed %.2f\n", e, tr.position.x, tr.position.y, tr.position.z, searching, lastSeen.x, lastSeen.y, lastSeen.z, speed);
+                std::fflush(stdout);
+            }
+        }
+    }
+}
 }
 
 } // namespace engine

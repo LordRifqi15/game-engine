@@ -1,6 +1,7 @@
 #include "core/gameplay_graph.h"
 
 #include "core/anim_editor.h"
+#include "modules/ai/BlackboardNodes.hpp"
 #include "modules/ai/GameplayNodesAI.hpp"
 #include "platform/input.h"
 
@@ -176,6 +177,28 @@ std::shared_ptr<GameplayGraph> GameplayGraph::clone(AnimParams* newTarget) const
             auto* d = static_cast<ApplyImpulseNode*>(dst);
             if (s->impulseNode) d->impulseNode = remap[s->impulseNode];
             if (s->trigger) d->trigger = remap[s->trigger];
+        } else if (auto* s = dynamic_cast<SetBlackboardVec3Node*>(src)) {
+            auto* d = static_cast<SetBlackboardVec3Node*>(dst);
+            if (s->value) d->value = remap[s->value];
+            if (s->condition) d->condition = remap[s->condition];
+        } else if (auto* s = dynamic_cast<SetBlackboardFloatNode*>(src)) {
+            auto* d = static_cast<SetBlackboardFloatNode*>(dst);
+            if (s->value) d->value = remap[s->value];
+            if (s->condition) d->condition = remap[s->condition];
+        } else if (auto* s = dynamic_cast<SetBlackboardBoolNode*>(src)) {
+            auto* d = static_cast<SetBlackboardBoolNode*>(dst);
+            if (s->value) d->value = remap[s->value];
+            if (s->condition) d->condition = remap[s->condition];
+        } else if (auto* s = dynamic_cast<GetBlackboardVec3Node*>(src)) {
+            (void)s; (void)dst;
+        } else if (auto* s = dynamic_cast<GetBlackboardFloatNode*>(src)) {
+            (void)s; (void)dst;
+        } else if (auto* s = dynamic_cast<GetBlackboardBoolNode*>(src)) {
+            (void)s; (void)dst;
+        } else if (auto* s = dynamic_cast<StateTimerNode*>(src)) {
+            auto* d = static_cast<StateTimerNode*>(dst);
+            if (s->reset) d->reset = remap[s->reset];
+            if (s->durationNode) d->durationNode = remap[s->durationNode];
         }
     }
     return g;
@@ -274,6 +297,57 @@ std::shared_ptr<GameplayGraph> GameplayGraph::makeNPCChase(AnimParams* target, f
     return g;
 }
 
+std::shared_ptr<GameplayGraph> GameplayGraph::makeBlackboardChase(AnimParams* target, float detectionRadius, float moveSpeed, float waitDuration) {
+    auto g = std::make_shared<GameplayGraph>();
+    g->target = target;
+    // 1. Detection: distance to player <=6
+    auto* dist = g->addNode<DistanceNode>();
+    auto* thresh = g->addNode<FloatNode>();
+    thresh->value = detectionRadius;
+    auto* canSee = g->addNode<CompareFloatNode>();
+    canSee->a = dist;
+    canSee->b = thresh;
+    canSee->op = CompareFloatNode::Op::LESS_THAN;
+    // 2. Memory update: when canSee true, store LastSeenPos and IsSearching=true
+    auto* setLastSeen = g->template addNode<SetBlackboardVec3Node>();
+    setLastSeen->key = "LastSeenPos";
+    setLastSeen->condition = canSee;
+    // value nullptr -> stores ctx.targetPosition
+    auto* setSearchingTrue = g->template addNode<SetBlackboardBoolNode>();
+    setSearchingTrue->key = "IsSearching";
+    setSearchingTrue->defaultValue = true;
+    setSearchingTrue->condition = canSee;
+    // 4. Timed searching: StateTimer reset when canSee, duration waitDuration
+    auto* timer = g->template addNode<StateTimerNode>();
+    timer->reset = canSee;
+    timer->duration = waitDuration;
+    auto* setSearchingFalse = g->template addNode<SetBlackboardBoolNode>();
+    setSearchingFalse->key = "IsSearching";
+    setSearchingFalse->defaultValue = false;
+    setSearchingFalse->condition = timer; // timer.isFinished bool
+    // 3. Execution: read IsSearching (after both sets, so it reflects timer result)
+    auto* getSearching = g->template addNode<GetBlackboardBoolNode>();
+    getSearching->key = "IsSearching";
+    getSearching->defaultValue = false;
+    // Animation: speed = IsSearching ? 2.5 : 0
+    auto* fIdle = g->addNode<FloatNode>(); fIdle->value = 0.0f;
+    auto* fRun = g->addNode<FloatNode>(); fRun->value = 2.5f;
+    auto* speedBranch = g->addNode<BranchNode>();
+    speedBranch->condition = getSearching;
+    speedBranch->trueValue = fRun;
+    speedBranch->falseValue = fIdle;
+    auto* setSpeed = g->addNode<SetFloatParamNode>();
+    setSpeed->input = speedBranch;
+    setSpeed->target = target;
+    setSpeed->member = &AnimParams::speed;
+    // Move towards LastSeenPos when IsSearching true
+    auto* speedVal = g->addNode<FloatNode>(); speedVal->value = moveSpeed;
+    auto* move = g->addNode<MoveTowardsNode>();
+    move->speed = speedVal;
+    move->enabled = getSearching;
+    return g;
+}
+
 std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimParams* target) {
     auto g = std::make_shared<GameplayGraph>();
     g->target = target;
@@ -321,6 +395,40 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
             auto* imp = g->addNode<ApplyImpulseNode>();
             imp->impulse.y = n.value != 0.0f ? n.value : 5.0f;
             node = imp;
+        } else if (n.type == "SetBlackboardVec3") {
+            auto* s = g->template addNode<SetBlackboardVec3Node>();
+            s->key = n.targetParam.empty() ? n.name : n.targetParam;
+            s->defaultValue = glm::vec3(n.value);
+            node = s;
+        } else if (n.type == "SetBlackboardFloat") {
+            auto* s = g->template addNode<SetBlackboardFloatNode>();
+            s->key = n.targetParam.empty() ? n.name : n.targetParam;
+            s->defaultValue = n.value;
+            node = s;
+        } else if (n.type == "SetBlackboardBool") {
+            auto* s = g->template addNode<SetBlackboardBoolNode>();
+            s->key = n.targetParam.empty() ? n.name : n.targetParam;
+            s->defaultValue = n.value != 0.0f;
+            node = s;
+        } else if (n.type == "GetBlackboardVec3") {
+            auto* s = g->template addNode<GetBlackboardVec3Node>();
+            s->key = n.targetParam.empty() ? n.name : n.targetParam;
+            s->defaultValue = glm::vec3(n.value);
+            node = s;
+        } else if (n.type == "GetBlackboardFloat") {
+            auto* s = g->template addNode<GetBlackboardFloatNode>();
+            s->key = n.targetParam.empty() ? n.name : n.targetParam;
+            s->defaultValue = n.value;
+            node = s;
+        } else if (n.type == "GetBlackboardBool") {
+            auto* s = g->template addNode<GetBlackboardBoolNode>();
+            s->key = n.targetParam.empty() ? n.name : n.targetParam;
+            s->defaultValue = n.value != 0.0f;
+            node = s;
+        } else if (n.type == "StateTimer") {
+            auto* s = g->template addNode<StateTimerNode>();
+            s->duration = n.value != 0.0f ? n.value : 3.0f;
+            node = s;
         }
     }
     for (auto& l : ed.links) {
@@ -351,6 +459,18 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
         } else if (auto* imp = dynamic_cast<ApplyImpulseNode*>(to)) {
             if (l.toSlot == 0) imp->impulseNode = from;
             else if (l.toSlot == 1) imp->trigger = from;
+        } else if (auto* s = dynamic_cast<SetBlackboardVec3Node*>(to)) {
+            if (l.toSlot == 0) s->value = from;
+            else if (l.toSlot == 1) s->condition = from;
+        } else if (auto* s = dynamic_cast<SetBlackboardFloatNode*>(to)) {
+            if (l.toSlot == 0) s->value = from;
+            else if (l.toSlot == 1) s->condition = from;
+        } else if (auto* s = dynamic_cast<SetBlackboardBoolNode*>(to)) {
+            if (l.toSlot == 0) s->value = from;
+            else if (l.toSlot == 1) s->condition = from;
+        } else if (auto* s = dynamic_cast<StateTimerNode*>(to)) {
+            if (l.toSlot == 0) s->reset = from;
+            else if (l.toSlot == 1) s->durationNode = from;
         }
     }
     g->setTarget(target);
