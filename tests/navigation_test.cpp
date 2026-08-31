@@ -146,10 +146,9 @@ int main(){
         ctx.outPhysics = &phys;
         follow.execute(ctx, p);
         if (feq(phys.velocity.x, 0.0f) && feq(phys.velocity.z, 0.0f)){ printf("FAIL FollowPath vel 0\n"); return 1; }
-        // Simulate reaching first waypoint
-        ctx.selfPosition = pathComp.waypoints[0];
-        // Set selfPosition to exactly first waypoint, should advance
+        // Simulate reaching current waypoint (first follow already advanced from 0->1)
         size_t beforeIdx = pathComp.currentIndex;
+        ctx.selfPosition = pathComp.waypoints[beforeIdx];
         follow.execute(ctx, p);
         if (pathComp.currentIndex != beforeIdx+1){ printf("FAIL FollowPath not advanced %zu -> %zu\n", beforeIdx, pathComp.currentIndex); return 1; }
         // Simulate arrival at final waypoint
