@@ -56,7 +56,9 @@ private:
     std::unique_ptr<AnimGraphEditor> gameplayEditor_;
     EditorGraph gameplayEditorGraph_;
     bool gameplayEditorOpen_ = false;
-    Entity gameplayEditorTarget_ = 0;
+    Entity gameplayEditorTarget_ = kInvalidEntity;
+    // Task 036: player entity for NPC targeting
+    Entity playerEntity_ = kInvalidEntity;
 };
 
 

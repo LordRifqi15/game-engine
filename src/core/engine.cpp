@@ -7,6 +7,8 @@
 #include "core/bounds_component.h"
 #include "core/gameplay_component.h"
 #include "core/gameplay_graph.h"
+#include "modules/ai/GameplayNodesAI.hpp"
+#include "modules/ai/GraphContext.hpp"
 #include "imgui.h"
 #include "core/gltf_loader.h"
 #include "core/skeleton.h"
@@ -138,6 +140,49 @@ Engine::Engine(Window& window)
                         }
                     }
                     scene_->registry().addComponent<AnimationComponent>(e, std::move(animC));
+                    if (playerEntity_ == kInvalidEntity) {
+                        playerEntity_ = e;
+                        gameplayEditorTarget_ = e;
+                    }
+                }
+            }
+            // Task 036: spawn NPC(s) that autonomously chase player
+            if (playerEntity_ != kInvalidEntity && gltf.ok && !gltf.skeletons.empty() && !gltf.animations.empty()) {
+                // Reuse first mesh/material for NPCs (SimpleSkin has 1 prim)
+                for (int npcIdx = 0; npcIdx < 2; ++npcIdx) {
+                    Entity npc = scene_->registry().createEntity();
+                    TransformComponent tc;
+                    tc.position = glm::vec3(5.0f + npcIdx * 3.0f, 0.0f, 2.0f + npcIdx * 1.5f);
+                    tc.scale = glm::vec3(1.0f);
+                    scene_->registry().addComponent<TransformComponent>(npc, tc);
+                    if (!gltfMeshes_.empty()) {
+                        MeshComponent mc; mc.mesh = &gltfMeshes_.front();
+                        scene_->registry().addComponent<MeshComponent>(npc, mc);
+                    }
+                    MaterialComponent matC2;
+                    matC2.material = gltf.primitives.empty() ? Material{} : gltf.primitives.front().material;
+                    scene_->registry().addComponent<MaterialComponent>(npc, matC2);
+                    SkeletonComponent skelC2;
+                    skelC2.skeleton = gltf.skeletons[0];
+                    scene_->registry().addComponent<SkeletonComponent>(npc, skelC2);
+                    AnimationComponent animC2;
+                    animC2.animations = gltf.animations;
+                    if (animC2.animations.size() == 1) {
+                        auto copy = animC2.animations[0];
+                        copy.name = copy.name.empty() ? "Copy" : copy.name + "_Copy";
+                        animC2.animations.push_back(std::move(copy));
+                    }
+                    animC2.speed = 1.0f;
+                    animC2.playing = true;
+                    animC2.loop = true;
+                    float jd = animC2.animations.size() > 1 && animC2.animations[1].duration > 0.0f ? animC2.animations[1].duration : 1.0f;
+                    animC2.machine = makeDefaultStateMachine(animC2.animations, skelC2.skeleton, jd);
+                    GameplayComponent gc;
+                    gc.graph = GameplayGraph::makeNPCChase(&animC2.machine->params(), 6.0f, 2.2f);
+                    scene_->registry().addComponent<GameplayComponent>(npc, std::move(gc));
+                    scene_->registry().addComponent<AnimationComponent>(npc, std::move(animC2));
+                    std::printf("[npc] spawned NPC %u at (%.1f,0,%.1f) chasing player %u\n", npc, tc.position.x, tc.position.z, playerEntity_);
+                    std::fflush(stdout);
                 }
             }
         } else {
@@ -147,7 +192,6 @@ Engine::Engine(Window& window)
     }
 
     Input::init(window_);
-    jobs_.init(std::max(2u, std::thread::hardware_concurrency() - 1));
 
     // ENGINE_FPS_LOG=1 enables once-per-second timing output on stderr.
     const char* fpsLog = std::getenv("ENGINE_FPS_LOG");
@@ -197,12 +241,12 @@ void Engine::run() {
             auto* animArr = scene_->registry().tryGetComponentArray<AnimationComponent>();
             auto* gameplayArr = scene_->registry().tryGetComponentArray<GameplayComponent>();
             if (gameplayArr && animArr && animArr->size()) {
-                if (gameplayEditorTarget_ == 0 || !gameplayArr->has(gameplayEditorTarget_)) {
+                if (gameplayEditorTarget_ == kInvalidEntity || !gameplayArr->has(gameplayEditorTarget_)) {
                     for (size_t i=0;i<animArr->size();++i) {
                         Entity e = animArr->entityAt(i);
                         if (gameplayArr->has(e)) { gameplayEditorTarget_ = e; break; }
                     }
-                    if (gameplayEditorTarget_ == 0) gameplayEditorTarget_ = animArr->entityAt(0);
+                    if (gameplayEditorTarget_ == kInvalidEntity) gameplayEditorTarget_ = animArr->entityAt(0);
                 }
                 ImGui::Begin("Gameplay Editor Target");
                 for (size_t i=0;i<animArr->size();++i) {
@@ -273,7 +317,22 @@ void Engine::update(double deltaTime) {
     float dt = static_cast<float>(deltaTime);
     auto* skelArray = scene_->registry().tryGetComponentArray<SkeletonComponent>();
     auto* animArray = scene_->registry().tryGetComponentArray<AnimationComponent>();
+    auto* transformArray = scene_->registry().tryGetComponentArray<TransformComponent>();
+    auto* gameplayArray = scene_->registry().tryGetComponentArray<GameplayComponent>();
     bool uploaded = false;
+
+    // Resolve player target position for NPCs (Task 036)
+    glm::vec3 playerPos{0.0f};
+    if (playerEntity_ != kInvalidEntity && transformArray && transformArray->has(playerEntity_)) {
+        playerPos = transformArray->get(playerEntity_).position;
+    } else if (transformArray && transformArray->size() > 0) {
+        // Fallback: first transform is player
+        playerPos = transformArray->get(transformArray->entityAt(0)).position;
+        if (playerEntity_ == kInvalidEntity && transformArray->size() > 0) {
+            // Auto-assign if not yet set (e.g., headless test)
+            playerEntity_ = transformArray->entityAt(0);
+        }
+    }
 
     if (skelArray && animArray) {
         for (size_t i = 0; i < skelArray->size(); ++i) {
@@ -283,10 +342,28 @@ void Engine::update(double deltaTime) {
             auto& animC = animArray->get(e);
             if (animC.animations.empty() || !animC.playing) continue;
             if (!animC.machine) continue;
-            // Gameplay -> Animation params (Input -> Logic -> Action) per-entity
-            auto* gameplayArray = scene_->registry().tryGetComponentArray<GameplayComponent>();
-            if (auto* gComp = gameplayArray ? gameplayArray->tryGet(e) : nullptr) {
-                if (gComp->graph) gComp->graph->execute(dt, animC.machine->params());
+            // Gameplay -> Animation params + spatial (per-entity)
+            if (gameplayArray) {
+                if (auto* gComp = gameplayArray->tryGet(e)) {
+                    if (gComp->graph) {
+                        // NPCs (non-player) with Transform get spatial context
+                        if (e != playerEntity_ && transformArray && transformArray->has(e)) {
+                            auto& tr = transformArray->get(e);
+                            GraphContext ctx{};
+                            ctx.selfEntity = static_cast<uint32_t>(e);
+                            ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
+                            ctx.selfPosition = tr.position;
+                            ctx.targetPosition = playerPos;
+                            ctx.outSelfPosition = &tr.position;
+                            ctx.outSelfRotationEuler = &tr.rotation;
+                            ctx.dt = dt;
+                            gComp->graph->execute(ctx, animC.machine->params());
+                        } else {
+                            // Player or no transform: legacy path (Input-driven)
+                            gComp->graph->execute(dt, animC.machine->params());
+                        }
+                    }
+                }
             }
             animC.machine->evaluateInto(skelC.skeleton, dt);
             if (!uploaded) {

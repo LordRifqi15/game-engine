@@ -28,11 +28,15 @@ void AnimGraphEditor::drawNode(EditorNode& n) {
     else if (n.type == "Input") col = IM_COL32(180, 90, 90, 255);
     else if (n.type == "SetParam") col = IM_COL32(180, 160, 90, 255);
     else if (n.type == "And" || n.type == "Timer") col = IM_COL32(120, 120, 180, 255);
+    else if (n.type == "Distance") col = IM_COL32(90, 180, 180, 255);
+    else if (n.type == "CompareFloat") col = IM_COL32(180, 120, 180, 255);
+    else if (n.type == "MoveTowards") col = IM_COL32(180, 180, 90, 255);
     ImGui::PushStyleColor(ImGuiCol_Button, col);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, col);
     std::string label = n.type;
     if (!n.name.empty()) label += ": " + n.name;
     else if (n.type == "Input" && n.key) label += " (" + std::to_string(n.key) + ")";
+    else if (n.type == "CompareFloat") label += " (" + n.op + ")";
     if (ImGui::Button(label.c_str(), size)) selected_ = n.id;
     ImGui::PopStyleColor(2);
     if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0)) {
@@ -42,7 +46,7 @@ void AnimGraphEditor::drawNode(EditorNode& n) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 origin = ImGui::GetItemRectMin();
     float r = 6.0f;
-    bool hasOutput = (n.type != "SetParam");
+    bool hasOutput = (n.type != "SetParam" && n.type != "MoveTowards");
     if (hasOutput) {
         ImVec2 p = ImVec2(origin.x + size.x, origin.y + size.y * 0.5f);
         dl->AddCircleFilled(p, r, IM_COL32(220, 220, 120, 255));
@@ -58,9 +62,9 @@ void AnimGraphEditor::drawNode(EditorNode& n) {
     }
     int inputCount = 0;
     if (n.type == "Blend" || n.type == "Branch") inputCount = 3;
-    else if (n.type == "And") inputCount = 2;
+    else if (n.type == "And" || n.type == "CompareFloat" || n.type == "MoveTowards") inputCount = 2;
     else if (n.type == "SetParam") inputCount = 1;
-    else if (n.type == "Float" || n.type == "Param" || n.type == "Input" || n.type == "Timer" || n.type == "Clip") inputCount = 0;
+    else if (n.type == "Float" || n.type == "Param" || n.type == "Input" || n.type == "Timer" || n.type == "Clip" || n.type == "Distance") inputCount = 0;
     for (int slot = 0; slot < inputCount; ++slot) {
         float fy = (inputCount == 1) ? 0.5f : (inputCount == 2 ? (slot == 0 ? 0.35f : 0.65f) : (slot == 2 ? 0.75f : (slot == 1 ? 0.65f : 0.35f)));
         ImVec2 p = ImVec2(origin.x, origin.y + size.y * fy);
@@ -100,6 +104,20 @@ void AnimGraphEditor::drawNode(EditorNode& n) {
             ImGui::SetNextItemWidth(60);
             ImGui::DragFloat("##max", &n.inMax, 0.05f);
             ImGui::PopID();
+        } else if (n.type == "CompareFloat") {
+            ImGui::PushID(n.id + 1000);
+            const char* ops[] = {"LESS_THAN","GREATER_THAN","LESS_EQUAL","GREATER_EQUAL","EQUAL"};
+            int cur = 0; for (int i=0;i<5;++i) if (n.op==ops[i]) cur=i;
+            if (ImGui::Combo("##op", &cur, ops, 5)) n.op = ops[cur];
+            ImGui::SameLine(); ImGui::SetNextItemWidth(60); ImGui::DragFloat("##thr", &n.value, 0.05f);
+            ImGui::PopID();
+        } else if (n.type == "MoveTowards") {
+            ImGui::PushID(n.id + 1000);
+            ImGui::SetNextItemWidth(80);
+            ImGui::DragFloat("##speed", &n.value, 0.05f, 0.0f, 10.0f);
+            ImGui::PopID();
+        } else if (n.type == "Distance") {
+            // sensor, no inline
         }
     }
     ImGui::PopID();
@@ -218,6 +236,24 @@ void AnimGraphEditor::draw(const Skeleton& baseSkeleton,
         EditorNode& n = ed_.nodes.emplace_back();
         n.id = ed_.nextId(); n.type = "Timer";
         n.x = 500.0f; n.y = 500.0f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("+ Distance")) {
+        EditorNode& n = ed_.nodes.emplace_back();
+        n.id = ed_.nextId(); n.type = "Distance";
+        n.x = 600.0f; n.y = 200.0f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("+ Compare")) {
+        EditorNode& n = ed_.nodes.emplace_back();
+        n.id = ed_.nextId(); n.type = "CompareFloat"; n.op = "LESS_THAN"; n.value = 5.0f;
+        n.x = 600.0f; n.y = 300.0f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("+ MoveTo")) {
+        EditorNode& n = ed_.nodes.emplace_back();
+        n.id = ed_.nextId(); n.type = "MoveTowards"; n.value = 2.0f;
+        n.x = 600.0f; n.y = 400.0f;
     }
     ImGui::SameLine();
 

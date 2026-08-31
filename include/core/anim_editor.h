@@ -11,17 +11,18 @@ namespace engine {
 // toRuntimeGraph() converts it to the runtime AnimGraph.
 struct EditorNode {
     int id = 0;
-    std::string type;   // "Clip", "Blend", "Param", "Input", "Branch", "SetParam", "Timer", "And", "Float"
+    std::string type;   // "Clip", "Blend", "Param", "Input", "Branch", "SetParam", "Timer", "And", "Float", "Distance", "CompareFloat", "MoveTowards"
     float x = 0.0f, y = 0.0f; // position
     // Per-type payload
-    std::string name;         // Clip name / Param name / Input key name / SetParam target
+    std::string name;         // Clip name / Param name / Input key name / SetParam target / Compare op
     Animation clip;           // Clip: full data (for self-contained files)
     int clipIndex = -1;       // Clip: index into external animations (spec's "clip": 0)
     float inMin = 0.0f, inMax = 1.0f; // Blend speed range
     float blendDuration = 0.3f;       // Blend smoothing
-    float value = 0.0f;               // Param/Float current value
+    float value = 0.0f;               // Param/Float/Compare threshold/Move speed current value
     int key = 0;                      // Input: GLFW key code
     std::string targetParam;          // SetParam: "speed" or "jumpPressed"
+    std::string op = "LESS_THAN";     // CompareFloat: comparison operator
 };
 
 

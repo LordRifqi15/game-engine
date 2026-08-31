@@ -12,6 +12,11 @@ struct BoolHolder : GameplayNode {
     bool getBool() const override { return v; }
     void execute(float) override {}
     std::string typeName() const override { return "BoolHolder"; }
+    std::unique_ptr<GameplayNode> clone() const override {
+        auto up = std::make_unique<BoolHolder>();
+        up->v = v;
+        return up;
+    }
 };
 
 int main() {

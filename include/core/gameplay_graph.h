@@ -1,11 +1,11 @@
 #pragma once
 
 #include "core/anim_state_machine.h"
+#include "modules/ai/GraphContext.hpp"
 
 #include <memory>
 #include <string>
 #include <vector>
-
 namespace engine {
 
 struct EditorGraph; // forward for visual editor bridge
@@ -13,6 +13,11 @@ struct EditorGraph; // forward for visual editor bridge
 struct GameplayNode {
     virtual ~GameplayNode() = default;
     virtual void execute(float dt) = 0;
+    // New spatial context overload for AI nodes (default forwards to dt version)
+    virtual void execute(const GraphContext& ctx, AnimParams& params) {
+        (void)params;
+        execute(ctx.dt);
+    }
     virtual std::string typeName() const = 0;
     virtual float getFloat() const { return 0.0f; }
     virtual bool getBool() const { return false; }
@@ -94,6 +99,8 @@ struct GameplayGraph {
     void setTarget(AnimParams* p);
     void execute(float dt);
     void execute(float dt, AnimParams& outParams);
+    void execute(float dt, AnimParams& outParams, const GraphContext& ctx);
+    void execute(const GraphContext& ctx, AnimParams& outParams);
     std::shared_ptr<GameplayGraph> clone(AnimParams* newTarget) const;
 
     template <typename T, typename... Args>
@@ -105,6 +112,8 @@ struct GameplayGraph {
     }
 
     static std::shared_ptr<GameplayGraph> makeMinimal(AnimParams* target);
+    // Task 036: autonomous NPC chase graph (Distance -> Compare -> MoveTowards + speed)
+    static std::shared_ptr<GameplayGraph> makeNPCChase(AnimParams* target, float detectionRadius = 5.0f, float moveSpeed = 2.0f);
 };
 
 // Editor -> GameplayGraph bridge (for visual editing of gameplay logic)

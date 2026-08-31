@@ -1,6 +1,7 @@
 #include "core/gameplay_graph.h"
 
 #include "core/anim_editor.h"
+#include "modules/ai/GameplayNodesAI.hpp"
 #include "platform/input.h"
 
 #include <GLFW/glfw3.h>
@@ -104,15 +105,30 @@ void GameplayGraph::setTarget(AnimParams* p) {
         else if (auto* s = dynamic_cast<SetBoolParamNode*>(n.get())) s->target = p;
     }
 }
-
 void GameplayGraph::execute(float dt) {
     for (auto& n : nodes) n->execute(dt);
 }
 
 void GameplayGraph::execute(float dt, AnimParams& outParams) {
     setTarget(&outParams);
-    execute(dt);
+    GraphContext dummy{};
+    dummy.dt = dt;
+    // Fallback: execute with dummy context so AI nodes get at least dt
+    for (auto& n : nodes) n->execute(dummy, outParams);
 }
+
+void GameplayGraph::execute(float dt, AnimParams& outParams, const GraphContext& ctx) {
+    setTarget(&outParams);
+    GraphContext merged = ctx;
+    merged.dt = dt;
+    for (auto& n : nodes) n->execute(merged, outParams);
+}
+
+void GameplayGraph::execute(const GraphContext& ctx, AnimParams& outParams) {
+    setTarget(&outParams);
+    for (auto& n : nodes) n->execute(ctx, outParams);
+}
+
 
 std::shared_ptr<GameplayGraph> GameplayGraph::clone(AnimParams* newTarget) const {
     auto g = std::make_shared<GameplayGraph>();
@@ -146,6 +162,16 @@ std::shared_ptr<GameplayGraph> GameplayGraph::clone(AnimParams* newTarget) const
             auto* d = static_cast<SetBoolParamNode*>(dst);
             if (s->input) d->input = remap[s->input];
             d->target = newTarget;
+        } else if (auto* s = dynamic_cast<DistanceNode*>(src)) {
+            (void)s; (void)dst; // stateless, no pointers
+        } else if (auto* s = dynamic_cast<CompareFloatNode*>(src)) {
+            auto* d = static_cast<CompareFloatNode*>(dst);
+            if (s->a) d->a = remap[s->a];
+            if (s->b) d->b = remap[s->b];
+        } else if (auto* s = dynamic_cast<MoveTowardsNode*>(src)) {
+            auto* d = static_cast<MoveTowardsNode*>(dst);
+            if (s->speed) d->speed = remap[s->speed];
+            if (s->enabled) d->enabled = remap[s->enabled];
         }
     }
     return g;
@@ -203,6 +229,42 @@ std::shared_ptr<GameplayGraph> GameplayGraph::makeMinimal(AnimParams* target) {
     return g;
 }
 
+std::shared_ptr<GameplayGraph> GameplayGraph::makeNPCChase(AnimParams* target, float detectionRadius, float moveSpeed) {
+    auto g = std::make_shared<GameplayGraph>();
+    g->target = target;
+    // Sensor: distance to player (via GraphContext)
+    auto* dist = g->addNode<DistanceNode>();
+    // Threshold for detection
+    auto* thresh = g->addNode<FloatNode>();
+    thresh->value = detectionRadius;
+    // Logic: is distance < threshold ?
+    auto* cmp = g->addNode<CompareFloatNode>();
+    cmp->a = dist;
+    cmp->b = thresh;
+    cmp->op = CompareFloatNode::Op::LESS_THAN;
+    // Animation coupling: speed = cmp ? 2.5 : 0
+    auto* floatIdle = g->addNode<FloatNode>();
+    floatIdle->value = 0.0f;
+    auto* floatRun = g->addNode<FloatNode>();
+    floatRun->value = 2.5f;
+    auto* speedBranch = g->addNode<BranchNode>();
+    speedBranch->condition = cmp;
+    speedBranch->trueValue = floatRun;
+    speedBranch->falseValue = floatIdle;
+    auto* setSpeed = g->addNode<SetFloatParamNode>();
+    setSpeed->input = speedBranch;
+    setSpeed->target = target;
+    setSpeed->member = &AnimParams::speed;
+    // Spatial action: move towards target if cmp true
+    auto* speedVal = g->addNode<FloatNode>();
+    speedVal->value = moveSpeed;
+    auto* move = g->addNode<MoveTowardsNode>();
+    move->speed = speedVal;
+    move->enabled = cmp;
+    // Keep move node in graph so it executes; no output needed
+    return g;
+}
+
 std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimParams* target) {
     auto g = std::make_shared<GameplayGraph>();
     g->target = target;
@@ -235,6 +297,17 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
             }
         } else if (n.type == "Timer") {
             node = g->addNode<TimerNode>();
+        } else if (n.type == "Distance") {
+            node = g->addNode<DistanceNode>();
+        } else if (n.type == "CompareFloat") {
+            auto* c = g->addNode<CompareFloatNode>();
+            c->op = CompareFloatNode::opFromString(n.op);
+            c->threshold = n.value != 0.0f ? n.value : 5.0f;
+            node = c;
+        } else if (n.type == "MoveTowards") {
+            auto* m = g->addNode<MoveTowardsNode>();
+            m->speedValue = n.value != 0.0f ? n.value : 2.0f;
+            node = m;
         }
         if (node) map[n.id] = node;
     }
@@ -257,6 +330,12 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
             if (l.toSlot == 0) s->input = from;
         } else if (auto* f = dynamic_cast<FloatNode*>(to)) {
             if (l.toSlot == 0) f->input = from;
+        } else if (auto* c = dynamic_cast<CompareFloatNode*>(to)) {
+            if (l.toSlot == 0) c->a = from;
+            else if (l.toSlot == 1) c->b = from;
+        } else if (auto* m = dynamic_cast<MoveTowardsNode*>(to)) {
+            if (l.toSlot == 0) m->speed = from;
+            else if (l.toSlot == 1) m->enabled = from;
         }
     }
     g->setTarget(target);
