@@ -2,7 +2,9 @@
 
 #include "core/anim_editor.h"
 #include "modules/ai/BlackboardNodes.hpp"
+#include "modules/ai/BlackboardNodes.hpp"
 #include "modules/ai/GameplayNodesAI.hpp"
+#include "modules/navigation/NavigationNodes.hpp"
 #include "platform/input.h"
 
 #include <GLFW/glfw3.h>
@@ -429,6 +431,15 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
             auto* s = g->template addNode<StateTimerNode>();
             s->duration = n.value != 0.0f ? n.value : 3.0f;
             node = s;
+        } else if (n.type == "RequestPath") {
+            auto* s = g->template addNode<RequestPathNode>();
+            s->targetPos = glm::vec3(n.value, 0.0f, 0.0f);
+            node = s;
+        } else if (n.type == "FollowPath") {
+            auto* s = g->template addNode<FollowPathNode>();
+            s->speedValue = n.value != 0.0f ? n.value : 2.0f;
+            s->acceptanceRadius = 0.3f;
+            node = s;
         }
     }
     for (auto& l : ed.links) {
@@ -471,6 +482,12 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
         } else if (auto* s = dynamic_cast<StateTimerNode*>(to)) {
             if (l.toSlot == 0) s->reset = from;
             else if (l.toSlot == 1) s->durationNode = from;
+        } else if (auto* s = dynamic_cast<RequestPathNode*>(to)) {
+            if (l.toSlot == 0) s->targetPosNode = from;
+            else if (l.toSlot == 1) s->triggerNode = from;
+        } else if (auto* s = dynamic_cast<FollowPathNode*>(to)) {
+            if (l.toSlot == 0) s->speedNode = from;
+            else if (l.toSlot == 1) s->enabledNode = from;
         }
     }
     g->setTarget(target);

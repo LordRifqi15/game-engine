@@ -3,6 +3,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include "ecs/components/PhysicsComponent.hpp"
 #include "ecs/components/BlackboardComponent.hpp"
+#include "ecs/components/PathComponent.hpp"
+#include "modules/navigation/NavGrid.hpp"
 #include <cstdint>
 
 namespace engine {
@@ -13,6 +15,8 @@ struct GraphContext {
     glm::vec3 targetPosition{0.0f};
     PhysicsComponent* outPhysics{nullptr};
     BlackboardComponent* blackboard{nullptr};
+    PathComponent* path{nullptr};
+    const NavGrid* navGrid{nullptr};
     glm::quat* outSelfRotation{nullptr};
     float dt{0.0f};
     // Legacy direct position mutation (Task 036) — kept for backward compat
@@ -27,4 +31,6 @@ namespace Engine {
     using GraphContext = engine::GraphContext;
     using PhysicsComponent = engine::PhysicsComponent;
     using BlackboardComponent = engine::BlackboardComponent;
+    using PathComponent = engine::PathComponent;
+    using NavGrid = engine::NavGrid;
 }

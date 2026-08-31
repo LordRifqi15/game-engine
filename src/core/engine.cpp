@@ -193,10 +193,12 @@ Engine::Engine(Window& window)
                         // Task 038: blackboard per NPC
                         BlackboardComponent bb;
                         scene_->registry().addComponent<BlackboardComponent>(npc, bb);
+                        // Task 039: path component for navigation
+                        PathComponent pathComp;
+                        scene_->registry().addComponent<PathComponent>(npc, pathComp);
                     }
                     if (!gltfMeshes_.empty()) {
                         MeshComponent mc; mc.mesh = &gltfMeshes_.front();
-                        scene_->registry().addComponent<MeshComponent>(npc, mc);
                     }
                     MaterialComponent matC2;
                     matC2.material = gltf.primitives.empty() ? Material{} : gltf.primitives.front().material;
@@ -226,10 +228,15 @@ Engine::Engine(Window& window)
             std::printf("[engine] SimpleSkin not found or not skinned, using fallback\n"); std::fflush(stdout);
             if (!gltf.ok) { std::printf("[engine] gltf error: %s\n", gltf.error.c_str()); std::fflush(stdout); }
         }
+        // Task 039: setup NavGrid obstacles (wall and U-shape) for pathfinding demo
+        // Wall at world x ~2 (grid x 18) from z -4 to 4 (grid z 12-20)
+        for (int z = 12; z < 20; ++z) navGrid_.setWalkable(18, z, false);
+        // U-shaped barrier centered at (0,6) for testing
+        for (int x = 14; x < 18; ++x) { navGrid_.setWalkable(x, 22, false); navGrid_.setWalkable(x, 24, false); }
+        for (int z = 22; z <= 24; ++z) navGrid_.setWalkable(18, z, false);
     }
 
     Input::init(window_);
-
     // ENGINE_FPS_LOG=1 enables once-per-second timing output on stderr.
     const char* fpsLog = std::getenv("ENGINE_FPS_LOG");
     debugTiming_ = fpsLog && fpsLog[0] == '1';
@@ -358,6 +365,8 @@ void Engine::update(double deltaTime) {
     auto* gameplayArray = scene_->registry().tryGetComponentArray<GameplayComponent>();
     auto* physArray = scene_->registry().tryGetComponentArray<PhysicsComponent>();
     auto* bbArray = scene_->registry().tryGetComponentArray<BlackboardComponent>();
+    auto* pathArray = scene_->registry().tryGetComponentArray<PathComponent>();
+
     // Debug phys
     static int dbgCount=0;
     if (dbgCount++ % 90 == 0) {
@@ -393,6 +402,7 @@ void Engine::update(double deltaTime) {
                 auto& tr = transformArray->get(e);
                 auto& phys = physArray->get(e);
                 BlackboardComponent* bb = bbArray ? bbArray->tryGet(e) : nullptr;
+                PathComponent* pathComp = pathArray ? pathArray->tryGet(e) : nullptr;
                 GraphContext ctx{};
                 ctx.selfEntity = static_cast<uint32_t>(e);
                 ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
@@ -400,6 +410,8 @@ void Engine::update(double deltaTime) {
                 ctx.targetPosition = playerPos;
                 ctx.outPhysics = &phys;
                 ctx.blackboard = bb;
+                ctx.path = pathComp;
+                ctx.navGrid = &navGrid_;
                 ctx.outSelfRotationEuler = &tr.rotation;
                 ctx.dt = dt;
                 // Legacy fallback also set for rotation
@@ -409,6 +421,7 @@ void Engine::update(double deltaTime) {
                 // Fallback without physics (should not happen, but keep legacy)
                 auto& tr = transformArray->get(e);
                 BlackboardComponent* bb = bbArray ? bbArray->tryGet(e) : nullptr;
+                PathComponent* pathComp = pathArray ? pathArray->tryGet(e) : nullptr;
                 GraphContext ctx{};
                 ctx.selfEntity = static_cast<uint32_t>(e);
                 ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
@@ -417,6 +430,8 @@ void Engine::update(double deltaTime) {
                 ctx.outSelfPosition = &tr.position;
                 ctx.outSelfRotationEuler = &tr.rotation;
                 ctx.blackboard = bb;
+                ctx.path = pathComp;
+                ctx.navGrid = &navGrid_;
                 ctx.dt = dt;
                 gComp->graph->execute(ctx, animC.machine->params());
             } else {
@@ -481,6 +496,6 @@ void Engine::update(double deltaTime) {
         }
     }
 }
-}
 
+}
 } // namespace engine

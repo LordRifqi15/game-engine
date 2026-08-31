@@ -42,6 +42,9 @@ add_executable(engine
     src/core/gameplay_graph.cpp
     src/modules/ai/GameplayNodesAI.cpp
     src/modules/ai/BlackboardNodes.cpp
+    src/modules/navigation/NavigationNodes.cpp
+    src/modules/navigation/NavGrid.cpp
+    src/modules/navigation/Pathfinding.cpp
     src/modules/physics/PhysicsSystem.cpp
     src/editor/anim_graph_editor.cpp
     src/platform/window.cpp

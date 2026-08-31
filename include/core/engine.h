@@ -9,6 +9,7 @@
 #include "core/scene.h"
 #include "core/time.h"
 #include "core/world.h"
+#include "modules/navigation/NavGrid.hpp"
 #include "modules/physics/PhysicsSystem.hpp"
 
 #include "editor/anim_graph_editor.h"
@@ -62,6 +63,8 @@ private:
     Entity playerEntity_ = kInvalidEntity;
     // Task 037: physics system (velocity + gravity + ground)
     PhysicsSystem physicsSystem_;
+    // Task 039: navigation grid (XZ plane)
+    NavGrid navGrid_{32, 32, 1.0f, glm::vec3(-16.0f, 0.0f, -16.0f)};
 };
 
 
