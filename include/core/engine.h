@@ -36,6 +36,8 @@ public:
 private:
     void update(double deltaTime);
     void render();
+    void spawnFallbackScene();
+    bool tryLoadScene(const std::string& path);
 
     Window& window_;
     Time time_;

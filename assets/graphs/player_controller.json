@@ -1,0 +1,148 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Input",
+      "name": "W",
+      "key": 87,
+      "pos": [40, 40]
+    },
+    {
+      "id": 2,
+      "type": "Input",
+      "name": "Shift",
+      "key": 340,
+      "pos": [40, 140]
+    },
+    {
+      "id": 3,
+      "type": "Input",
+      "name": "Space",
+      "key": 32,
+      "pos": [40, 240]
+    },
+    {
+      "id": 4,
+      "type": "And",
+      "pos": [200, 80]
+    },
+    {
+      "id": 5,
+      "type": "Float",
+      "value": 0.0,
+      "pos": [40, 340]
+    },
+    {
+      "id": 6,
+      "type": "Float",
+      "value": 1.5,
+      "pos": [40, 400]
+    },
+    {
+      "id": 7,
+      "type": "Float",
+      "value": 2.5,
+      "pos": [40, 460]
+    },
+    {
+      "id": 8,
+      "type": "Branch",
+      "pos": [200, 200]
+    },
+    {
+      "id": 9,
+      "type": "Branch",
+      "pos": [200, 300]
+    },
+    {
+      "id": 10,
+      "type": "Timer",
+      "pos": [40, 520]
+    },
+    {
+      "id": 11,
+      "type": "Branch",
+      "pos": [400, 200]
+    },
+    {
+      "id": 12,
+      "type": "SetParam",
+      "targetParam": "speed",
+      "pos": [600, 200]
+    },
+    {
+      "id": 13,
+      "type": "SetParam",
+      "targetParam": "jumpPressed",
+      "pos": [600, 300]
+    }
+  ],
+  "links": [
+    {
+      "from": 1,
+      "to": 4,
+      "toSlot": 0
+    },
+    {
+      "from": 2,
+      "to": 4,
+      "toSlot": 1
+    },
+    {
+      "from": 1,
+      "to": 8,
+      "toSlot": 0
+    },
+    {
+      "from": 6,
+      "to": 8,
+      "toSlot": 1
+    },
+    {
+      "from": 5,
+      "to": 8,
+      "toSlot": 2
+    },
+    {
+      "from": 4,
+      "to": 9,
+      "toSlot": 0
+    },
+    {
+      "from": 7,
+      "to": 9,
+      "toSlot": 1
+    },
+    {
+      "from": 8,
+      "to": 9,
+      "toSlot": 2
+    },
+    {
+      "from": 1,
+      "to": 11,
+      "toSlot": 0
+    },
+    {
+      "from": 9,
+      "to": 11,
+      "toSlot": 1
+    },
+    {
+      "from": 10,
+      "to": 11,
+      "toSlot": 2
+    },
+    {
+      "from": 11,
+      "to": 12,
+      "toSlot": 0
+    },
+    {
+      "from": 3,
+      "to": 13,
+      "toSlot": 0
+    }
+  ],
+  "output": 12
+}

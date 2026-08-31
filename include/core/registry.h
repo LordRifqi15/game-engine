@@ -5,7 +5,10 @@
 
 #include <memory>
 #include <unordered_map>
+#include <vector>
+#include <string>
 #include <cstdint>
+
 
 namespace engine {
 
@@ -60,17 +63,48 @@ public:
         return &static_cast<ComponentArrayWrapper<T>*>(it->second.get())->array;
     }
 
+    void clear() {
+        for (auto& [k, v] : arrays_) {
+            // Clear each component array via type-erased clear
+            // We need to call clear on the underlying ComponentArray
+            // Use virtual clear if available, otherwise reset via removal
+            // For now, reset by clearing the wrapper's array directly
+            // We add a virtual clear to IComponentArray
+            v->clear();
+        }
+        arrays_.clear();
+        nextId_ = 0;
+    }
+
+    std::vector<Entity> getAllEntities() const {
+        std::unordered_map<Entity, bool> seen;
+        std::vector<Entity> out;
+        for (auto& [k, v] : arrays_) {
+            v->collectEntities(seen, out);
+        }
+        return out;
+    }
+
 private:
     // Type-erased removal hook.
     struct IComponentArray {
         virtual ~IComponentArray() = default;
         virtual void removeEntity(Entity e) = 0;
+        virtual void clear() = 0;
+        virtual void collectEntities(std::unordered_map<Entity,bool>& seen, std::vector<Entity>& out) const = 0;
     };
 
     template <typename T>
     struct ComponentArrayWrapper final : IComponentArray {
         ComponentArray<T> array;
         void removeEntity(Entity e) override { array.remove(e); }
+        void clear() override { array.clear(); }
+        void collectEntities(std::unordered_map<Entity,bool>& seen, std::vector<Entity>& out) const override {
+            for (size_t i=0;i<array.size();++i){
+                Entity e = array.entityAt(i);
+                if(!seen[e]){ seen[e]=true; out.push_back(e); }
+            }
+        }
     };
 
     template <typename Fn>
@@ -79,6 +113,7 @@ private:
             fn(arr.get());
         }
     }
+
 
     template <typename T>
     ComponentArray<T>& arrayFor() {

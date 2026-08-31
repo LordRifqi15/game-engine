@@ -1,0 +1,59 @@
+{
+  "scene": "Demo World",
+  "version": 1,
+  "entities": [
+    {
+      "tag": "Player",
+      "transform": {
+        "position": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "physics": {
+        "mass": 1.0,
+        "linearDamping": 10.0,
+        "useGravity": true
+      },
+      "collider": {
+        "type": "Sphere",
+        "radius": 0.5
+      },
+      "gameplay": {
+        "graphTemplate": "assets/graphs/player_controller.json"
+      }
+    },
+    {
+      "tag": "Guard_NPC",
+      "transform": {
+        "position": [8.0, 0.0, 8.0],
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "physics": {
+        "mass": 1.0,
+        "linearDamping": 10.0,
+        "useGravity": true
+      },
+      "collider": {
+        "type": "Sphere",
+        "radius": 0.5
+      },
+      "blackboard": {
+        "floats": {
+          "ChaseRadius": 6.0,
+          "PatrolSpeed": 1.5
+        },
+        "bools": {
+          "IsAlert": false
+        }
+      },
+      "path": {
+        "acceptanceRadius": 0.3
+      },
+      "gameplay": {
+        "graphTemplate": "assets/graphs/npc_patrol_chase.json",
+        "targetTag": "Player"
+      }
+    }
+  ]
+}

@@ -10,6 +10,9 @@
 #include "ecs/components/PhysicsComponent.hpp"
 #include "ecs/components/ColliderComponent.hpp"
 #include "ecs/components/BlackboardComponent.hpp"
+#include "ecs/components/PathComponent.hpp"
+#include "ecs/components/TagComponent.hpp"
+#include "core/scene/SceneSerializer.hpp"
 #include "modules/ai/GameplayNodesAI.hpp"
 #include "modules/ai/BlackboardNodes.hpp"
 #include "modules/ai/GraphContext.hpp"
@@ -24,7 +27,6 @@
 #include "platform/window.h"
 #include "renderer/renderer.h"
 #include "core/render_system.h"
-
 #include <cstdio>
 #include <algorithm>
 #include <cstdlib>
@@ -40,10 +42,88 @@ Engine::Engine(Window& window)
     renderer_->enableEditorOverlay(window_);
     scene_ = new Scene();
 
-        // Streaming world: shared quad mesh for ground chunks, rotated to XZ plane.
     triangleMesh_ = new Mesh(mesh_primitives::quad());
     world_ = new World(scene_->registry(), triangleMesh_, 2, 16.0f);
 
+    // Task 040: Try to load scene from file, fallback to hardcoded if missing
+    bool loaded = false;
+    std::vector<std::string> candidates = {
+        "assets/scenes/default.scene.json",
+        "assets/scenes/demo_world.scene.json",
+        "build/assets/scenes/default.scene.json",
+        "../assets/scenes/default.scene.json",
+        "../assets/scenes/demo_world.scene.json"
+    };
+    for (auto& p : candidates) {
+        if (tryLoadScene(p)) { loaded = true; std::printf("[engine] loaded scene %s\n", p.c_str()); std::fflush(stdout); break; }
+    }
+    if (!loaded) {
+        std::printf("[scene] Failed to load scene file. Spawning fallback scene.\n");
+        std::fflush(stdout);
+        spawnFallbackScene();
+    }
+
+    Input::init(window_);
+    const char* fpsLog = std::getenv("ENGINE_FPS_LOG");
+    debugTiming_ = fpsLog && fpsLog[0] == '1';
+}
+
+bool Engine::tryLoadScene(const std::string& path) {
+    // Use Engine::SceneSerializer (alias to engine::SceneSerializer)
+    if (!::Engine::SceneSerializer::deserialize(path, scene_->registry())) {
+        return false;
+    }
+    // Find player entity by tag
+    auto entities = scene_->registry().getAllEntities();
+    for (auto e : entities) {
+        if (auto* tag = scene_->registry().tryGetComponent<::Engine::TagComponent>(e)) {
+            if (tag->tag == "Player") { playerEntity_ = e; break; }
+        }
+    }
+    if (playerEntity_ == kInvalidEntity && !entities.empty()) {
+        // Fallback: first entity with Transform
+        for (auto e : entities) {
+            if (scene_->registry().hasComponent<::engine::TransformComponent>(e)) { playerEntity_ = e; break; }
+        }
+        if (playerEntity_ == kInvalidEntity) playerEntity_ = entities[0];
+    }
+    gameplayEditorTarget_ = playerEntity_;
+    // Setup NavGrid obstacles for demo (same as fallback)
+    for (int z = 12; z < 20; ++z) navGrid_.setWalkable(18, z, false);
+    for (int x = 14; x < 18; ++x) { navGrid_.setWalkable(x, 22, false); navGrid_.setWalkable(x, 24, false); }
+    for (int z = 22; z <= 24; ++z) navGrid_.setWalkable(18, z, false);
+    // Ensure gameplay editor exists if we have a player with animation
+    // This mirrors the fallback initialization for editor
+    if (!gameplayEditor_ && playerEntity_ != kInvalidEntity) {
+        // Try to find skeleton for editor base
+        if (auto* skelComp = scene_->registry().tryGetComponent<SkeletonComponent>(playerEntity_)) {
+            editorBaseSkeleton_ = skelComp->skeleton;
+        }
+        gameplayEditorGraph_ = makeGameplayEditorGraph();
+        gameplayEditor_ = std::make_unique<AnimGraphEditor>(gameplayEditorGraph_);
+        std::printf("[gameplay] editor ready (scene load): %zu nodes\n", gameplayEditorGraph_.nodes.size());
+        std::fflush(stdout);
+    }
+    // If editor not yet created but we have a skeleton, create it
+    if (!editor_ && playerEntity_ != kInvalidEntity) {
+        if (auto* skelComp = scene_->registry().tryGetComponent<SkeletonComponent>(playerEntity_)) {
+            if (!skelComp->skeleton.joints.empty()) {
+                // Need animations to make editor graph; if no animation, skip
+                if (auto* animComp = scene_->registry().tryGetComponent<AnimationComponent>(playerEntity_)) {
+                    if (!animComp->animations.empty()) {
+                        editorGraph_ = makeLocomotionEditorGraph(animComp->animations);
+                        editorBaseSkeleton_ = skelComp->skeleton;
+                        editor_ = std::make_unique<AnimGraphEditor>(editorGraph_);
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
+void Engine::spawnFallbackScene() {
+    // Original hardcoded spawning extracted from previous Engine::Engine
     // Try to load animated SimpleSkin model for skeletal demo (Option A: one skeleton per draw)
     {
         std::string gltfPath = "/home/lordrifqi15/Documents/code/project/pribadi/game-engine/assets/models/SimpleSkin/SimpleSkin.gltf";
@@ -56,6 +136,8 @@ Engine::Engine(Window& window)
                 gltfMeshes_.push_back(std::move(prim.mesh));
                 Mesh* meshPtr = &gltfMeshes_.back();
                 Entity e = scene_->registry().createEntity();
+                // Tag for scene serialization
+                scene_->registry().addComponent<::Engine::TagComponent>(e, ::Engine::TagComponent("Player"));
                 TransformComponent tc;
                 tc.position = glm::vec3(0.0f, 0.0f, 0.0f);
                 tc.scale = glm::vec3(1.0f);
@@ -79,19 +161,16 @@ Engine::Engine(Window& window)
                     animC.speed = 1.0f;
                     animC.playing = true;
                     animC.loop = true;
-                    // Task 030: state machine selects graphs; graphs select poses.
                     float jumpDur = animC.animations[1].duration > 0.0f ? animC.animations[1].duration : 1.0f;
                     animC.machine = makeDefaultStateMachine(animC.animations, skelC.skeleton, jumpDur);
                     std::printf("[state] machine built: %zu states (Idle/Locomotion/Jump)\n", animC.animations.size());
                     std::fflush(stdout);
-                    // Task 031: editor mirrors locomotion graph for visual editing (once)
                     if (!editor_) {
                         editorGraph_ = makeLocomotionEditorGraph(animC.animations);
                         editorBaseSkeleton_ = skelC.skeleton;
                         editor_ = std::make_unique<AnimGraphEditor>(editorGraph_);
                         std::printf("[editor] graph editor ready: %zu nodes, output %d\n", editorGraph_.nodes.size(), editorGraph_.outputNode);
                         std::fflush(stdout);
-                        // Task 035: gameplay editor (per-entity, F2)
                         if (!gameplayEditor_) {
                             gameplayEditorGraph_ = makeGameplayEditorGraph();
                             gameplayEditor_ = std::make_unique<AnimGraphEditor>(gameplayEditorGraph_);
@@ -100,12 +179,10 @@ Engine::Engine(Window& window)
                             std::fflush(stdout);
                         }
                     }
-                    // Task 035: per-entity gameplay graph (clone template per entity)
                     {
                         GameplayComponent gc;
                         gc.graph = GameplayGraph::makeMinimal(&animC.machine->params());
                         scene_->registry().addComponent<GameplayComponent>(e, std::move(gc));
-                        // Task 037: physics + collider for player
                         PhysicsComponent pc;
                         pc.velocity = glm::vec3(0.0f);
                         pc.mass = 1.0f;
@@ -119,7 +196,6 @@ Engine::Engine(Window& window)
                         col.halfExtents = glm::vec3(0.5f, 1.0f, 0.5f);
                         col.centerOffset = glm::vec3(0.0f, 0.5f, 0.0f);
                         scene_->registry().addComponent<::Engine::ColliderComponent>(e, col);
-                        // Task 038: blackboard for player (optional)
                         BlackboardComponent bb;
                         scene_->registry().addComponent<BlackboardComponent>(e, bb);
                     }
@@ -139,7 +215,6 @@ Engine::Engine(Window& window)
                             auto res = buildRuntimeGraph(loaded, skelC.skeleton, animC.animations);
                             if (!res.graph) res = buildRuntimeGraph(loaded, skelC.skeleton);
                             if (res.graph) {
-                                // Only override first entity's locomotion when loading persisted graph
                                 static bool firstLoad = true;
                                 if (firstLoad) {
                                     editorGraph_ = loaded;
@@ -166,16 +241,14 @@ Engine::Engine(Window& window)
                     }
                 }
             }
-            // Task 036: spawn NPC(s) that autonomously chase player
             if (playerEntity_ != kInvalidEntity && gltf.ok && !gltf.skeletons.empty() && !gltf.animations.empty()) {
-                // Reuse first mesh/material for NPCs (SimpleSkin has 1 prim)
                 for (int npcIdx = 0; npcIdx < 2; ++npcIdx) {
                     Entity npc = scene_->registry().createEntity();
+                    scene_->registry().addComponent<::Engine::TagComponent>(npc, ::Engine::TagComponent(std::string("Guard_NPC_") + std::to_string(npcIdx)));
                     TransformComponent tc;
                     tc.position = glm::vec3(5.0f + npcIdx * 3.0f, 0.0f, 2.0f + npcIdx * 1.5f);
                     tc.scale = glm::vec3(1.0f);
                     scene_->registry().addComponent<TransformComponent>(npc, tc);
-                    // Task 037: physics + collider for NPC
                     {
                         PhysicsComponent pc;
                         pc.velocity = glm::vec3(0.0f);
@@ -190,15 +263,17 @@ Engine::Engine(Window& window)
                         col.halfExtents = glm::vec3(0.5f, 1.0f, 0.5f);
                         col.centerOffset = glm::vec3(0.0f, 0.5f, 0.0f);
                         scene_->registry().addComponent<::Engine::ColliderComponent>(npc, col);
-                        // Task 038: blackboard per NPC
                         BlackboardComponent bb;
+                        bb.setFloat("ChaseRadius", 6.0f);
+                        bb.setFloat("PatrolSpeed", 1.5f);
+                        bb.setBool("IsAlert", false);
                         scene_->registry().addComponent<BlackboardComponent>(npc, bb);
-                        // Task 039: path component for navigation
                         PathComponent pathComp;
                         scene_->registry().addComponent<PathComponent>(npc, pathComp);
                     }
                     if (!gltfMeshes_.empty()) {
                         MeshComponent mc; mc.mesh = &gltfMeshes_.front();
+                        scene_->registry().addComponent<MeshComponent>(mc.mesh ? npc : npc, mc);
                     }
                     MaterialComponent matC2;
                     matC2.material = gltf.primitives.empty() ? Material{} : gltf.primitives.front().material;
@@ -228,18 +303,10 @@ Engine::Engine(Window& window)
             std::printf("[engine] SimpleSkin not found or not skinned, using fallback\n"); std::fflush(stdout);
             if (!gltf.ok) { std::printf("[engine] gltf error: %s\n", gltf.error.c_str()); std::fflush(stdout); }
         }
-        // Task 039: setup NavGrid obstacles (wall and U-shape) for pathfinding demo
-        // Wall at world x ~2 (grid x 18) from z -4 to 4 (grid z 12-20)
         for (int z = 12; z < 20; ++z) navGrid_.setWalkable(18, z, false);
-        // U-shaped barrier centered at (0,6) for testing
         for (int x = 14; x < 18; ++x) { navGrid_.setWalkable(x, 22, false); navGrid_.setWalkable(x, 24, false); }
         for (int z = 22; z <= 24; ++z) navGrid_.setWalkable(18, z, false);
     }
-
-    Input::init(window_);
-    // ENGINE_FPS_LOG=1 enables once-per-second timing output on stderr.
-    const char* fpsLog = std::getenv("ENGINE_FPS_LOG");
-    debugTiming_ = fpsLog && fpsLog[0] == '1';
 }
 
 Engine::~Engine() {
@@ -497,5 +564,5 @@ void Engine::update(double deltaTime) {
     }
 }
 
-}
 } // namespace engine
+}

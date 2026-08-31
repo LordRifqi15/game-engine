@@ -53,6 +53,12 @@ public:
 
     bool has(Entity e) const { return index_.count(e) > 0; }
 
+    void clear() {
+        components_.clear();
+        entities_.clear();
+        index_.clear();
+    }
+
     // Dense iteration.
     auto begin() { return components_.begin(); }
     auto end() { return components_.end(); }
@@ -61,8 +67,6 @@ public:
 
     size_t size() const { return components_.size(); }
     Entity entityAt(size_t i) const { return entities_[i]; }
-
-private:
     std::vector<T> components_;
     std::vector<Entity> entities_;
     std::unordered_map<Entity, uint32_t> index_;

@@ -40,6 +40,8 @@ add_executable(engine
     src/core/anim_graph_asset.cpp
     src/core/anim_graph_ai.cpp
     src/core/gameplay_graph.cpp
+    src/core/scene/Scene.cpp
+    src/core/scene/SceneSerializer.cpp
     src/modules/ai/GameplayNodesAI.cpp
     src/modules/ai/BlackboardNodes.cpp
     src/modules/navigation/NavigationNodes.cpp
