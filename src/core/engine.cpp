@@ -7,6 +7,8 @@
 #include "core/bounds_component.h"
 #include "core/gameplay_component.h"
 #include "core/gameplay_graph.h"
+#include "ecs/components/PhysicsComponent.hpp"
+#include "ecs/components/ColliderComponent.hpp"
 #include "modules/ai/GameplayNodesAI.hpp"
 #include "modules/ai/GraphContext.hpp"
 #include "imgui.h"
@@ -101,8 +103,20 @@ Engine::Engine(Window& window)
                         GameplayComponent gc;
                         gc.graph = GameplayGraph::makeMinimal(&animC.machine->params());
                         scene_->registry().addComponent<GameplayComponent>(e, std::move(gc));
+                        // Task 037: physics + collider for player
+                        PhysicsComponent pc;
+                        pc.velocity = glm::vec3(0.0f);
+                        pc.mass = 1.0f;
+                        pc.linearDamping = 10.0f;
+                        pc.useGravity = true;
+                        pc.isGrounded = true;
+                        ::Engine::ColliderComponent col;
+                        col.type = ::Engine::ColliderType::Sphere;
+                        col.radius = 0.5f;
+                        col.halfExtents = glm::vec3(0.5f, 1.0f, 0.5f);
+                        col.centerOffset = glm::vec3(0.0f, 0.5f, 0.0f);
+                        scene_->registry().addComponent<::Engine::ColliderComponent>(e, col);
                     }
-                    // Task 032: try to load persisted graph and override Locomotion (once)
                     if (editor_ && editorGraph_.nodes.size() > 0) {
                         const std::vector<std::string> candidates = {
                             "assets/animations/locomotion.graph.json",
@@ -155,6 +169,22 @@ Engine::Engine(Window& window)
                     tc.position = glm::vec3(5.0f + npcIdx * 3.0f, 0.0f, 2.0f + npcIdx * 1.5f);
                     tc.scale = glm::vec3(1.0f);
                     scene_->registry().addComponent<TransformComponent>(npc, tc);
+                    // Task 037: physics + collider for NPC
+                    {
+                        PhysicsComponent pc;
+                        pc.velocity = glm::vec3(0.0f);
+                        pc.mass = 1.0f;
+                        pc.linearDamping = 8.0f;
+                        pc.useGravity = true;
+                        pc.isGrounded = true;
+                        scene_->registry().addComponent<PhysicsComponent>(npc, pc);
+                        ::Engine::ColliderComponent col;
+                        col.type = ::Engine::ColliderType::Sphere;
+                        col.radius = 0.5f;
+                        col.halfExtents = glm::vec3(0.5f, 1.0f, 0.5f);
+                        col.centerOffset = glm::vec3(0.0f, 0.5f, 0.0f);
+                        scene_->registry().addComponent<::Engine::ColliderComponent>(npc, col);
+                    }
                     if (!gltfMeshes_.empty()) {
                         MeshComponent mc; mc.mesh = &gltfMeshes_.front();
                         scene_->registry().addComponent<MeshComponent>(npc, mc);
@@ -310,30 +340,78 @@ void Engine::update(double deltaTime) {
     // Simulation step: camera controller first, then scene systems (physics/AI later).
     controller_.update(scene_->camera(), static_cast<float>(deltaTime));
 
-    // Animation blending + state machine (Task 030) — auto demo fallback ensures
-    // Task 034: gameplay graph drives animation params (no hardcoded WASD).
-    // The graph reads Input::* and writes to AnimParams, which the state
-    // machine then consumes. This keeps engine core free of gameplay logic.
+    // Clamp dt for deterministic physics (avoid large spikes from window drag)
     float dt = static_cast<float>(deltaTime);
+    if (dt > 0.1f) dt = 0.1f;
+    if (dt <= 0.0f) return;
+
     auto* skelArray = scene_->registry().tryGetComponentArray<SkeletonComponent>();
     auto* animArray = scene_->registry().tryGetComponentArray<AnimationComponent>();
     auto* transformArray = scene_->registry().tryGetComponentArray<TransformComponent>();
     auto* gameplayArray = scene_->registry().tryGetComponentArray<GameplayComponent>();
-    bool uploaded = false;
+    auto* physArray = scene_->registry().tryGetComponentArray<PhysicsComponent>();
 
     // Resolve player target position for NPCs (Task 036)
     glm::vec3 playerPos{0.0f};
     if (playerEntity_ != kInvalidEntity && transformArray && transformArray->has(playerEntity_)) {
         playerPos = transformArray->get(playerEntity_).position;
     } else if (transformArray && transformArray->size() > 0) {
-        // Fallback: first transform is player
         playerPos = transformArray->get(transformArray->entityAt(0)).position;
         if (playerEntity_ == kInvalidEntity && transformArray->size() > 0) {
-            // Auto-assign if not yet set (e.g., headless test)
             playerEntity_ = transformArray->entityAt(0);
         }
     }
 
+    // 1. Gameplay & AI graphs (sets desired velocity / impulses) — per-entity
+    if (skelArray && animArray) {
+        for (size_t i = 0; i < skelArray->size(); ++i) {
+            Entity e = skelArray->entityAt(i);
+            if (!animArray->has(e)) continue;
+            auto& animC = animArray->get(e);
+            if (animC.animations.empty() || !animC.playing) continue;
+            if (!animC.machine) continue;
+            if (!gameplayArray) continue;
+            auto* gComp = gameplayArray->tryGet(e);
+            if (!gComp || !gComp->graph) continue;
+            // NPCs (non-player) with Transform+Physics get spatial physics context
+            if (e != playerEntity_ && transformArray && transformArray->has(e) && physArray && physArray->has(e)) {
+                auto& tr = transformArray->get(e);
+                auto& phys = physArray->get(e);
+                GraphContext ctx{};
+                ctx.selfEntity = static_cast<uint32_t>(e);
+                ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
+                ctx.selfPosition = tr.position;
+                ctx.targetPosition = playerPos;
+                ctx.outPhysics = &phys;
+                ctx.outSelfRotationEuler = &tr.rotation;
+                ctx.dt = dt;
+                // Legacy fallback also set for rotation
+                ctx.outSelfPosition = &tr.position;
+                gComp->graph->execute(ctx, animC.machine->params());
+            } else if (e != playerEntity_ && transformArray && transformArray->has(e)) {
+                // Fallback without physics (should not happen, but keep legacy)
+                auto& tr = transformArray->get(e);
+                GraphContext ctx{};
+                ctx.selfEntity = static_cast<uint32_t>(e);
+                ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
+                ctx.selfPosition = tr.position;
+                ctx.targetPosition = playerPos;
+                ctx.outSelfPosition = &tr.position;
+                ctx.outSelfRotationEuler = &tr.rotation;
+                ctx.dt = dt;
+                gComp->graph->execute(ctx, animC.machine->params());
+            } else {
+                // Player or no transform: legacy Input-driven
+                gComp->graph->execute(dt, animC.machine->params());
+            }
+        }
+    }
+
+    // 2. Physics simulation (integrates velocity, applies gravity, moves Transform)
+    physicsSystem_.update(scene_->registry(), dt);
+
+    // 3. Animation evaluation (reads actual horizontal velocity for locomotion blend) + upload
+    bool uploaded = false;
     if (skelArray && animArray) {
         for (size_t i = 0; i < skelArray->size(); ++i) {
             Entity e = skelArray->entityAt(i);
@@ -342,28 +420,12 @@ void Engine::update(double deltaTime) {
             auto& animC = animArray->get(e);
             if (animC.animations.empty() || !animC.playing) continue;
             if (!animC.machine) continue;
-            // Gameplay -> Animation params + spatial (per-entity)
-            if (gameplayArray) {
-                if (auto* gComp = gameplayArray->tryGet(e)) {
-                    if (gComp->graph) {
-                        // NPCs (non-player) with Transform get spatial context
-                        if (e != playerEntity_ && transformArray && transformArray->has(e)) {
-                            auto& tr = transformArray->get(e);
-                            GraphContext ctx{};
-                            ctx.selfEntity = static_cast<uint32_t>(e);
-                            ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
-                            ctx.selfPosition = tr.position;
-                            ctx.targetPosition = playerPos;
-                            ctx.outSelfPosition = &tr.position;
-                            ctx.outSelfRotationEuler = &tr.rotation;
-                            ctx.dt = dt;
-                            gComp->graph->execute(ctx, animC.machine->params());
-                        } else {
-                            // Player or no transform: legacy path (Input-driven)
-                            gComp->graph->execute(dt, animC.machine->params());
-                        }
-                    }
-                }
+            // Decoupled pose: observe actual physics velocity
+            if (physArray && physArray->has(e)) {
+                auto& phys = physArray->get(e);
+                float horizSpeed = glm::length(glm::vec2(phys.velocity.x, phys.velocity.z));
+                animC.machine->params().speed = horizSpeed;
+                animC.machine->params().isGrounded = phys.isGrounded;
             }
             animC.machine->evaluateInto(skelC.skeleton, dt);
             if (!uploaded) {

@@ -20,6 +20,7 @@ struct AnimState {
 struct AnimParams {
     float speed = 0.0f;
     bool jumpPressed = false;
+    bool isGrounded = true;
 };
 
 // Transition rule. from == nullptr means "Any state".

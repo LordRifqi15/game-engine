@@ -1,8 +1,8 @@
 #include "modules/ai/GameplayNodesAI.hpp"
 
+#include "ecs/components/PhysicsComponent.hpp"
 #include <glm/gtc/quaternion.hpp>
 #include <cmath>
-
 namespace engine {
 
 void DistanceNode::execute(float) {
@@ -67,25 +67,31 @@ void MoveTowardsNode::execute(float) {
 void MoveTowardsNode::execute(const GraphContext& ctx, AnimParams& /*params*/) {
     bool en = enabled ? enabled->getBool() : enabledValue;
     if (!en) return;
+    // Prefer physics velocity path (Task 037), fallback to legacy direct position
+    if (ctx.outPhysics) {
+        float dist = glm::distance(ctx.selfPosition, ctx.targetPosition);
+        if (dist <= 0.05f) return;
+        if (dist < 0.001f) return;
+        float spd = speed ? speed->getFloat() : speedValue;
+        glm::vec3 dir = glm::normalize(ctx.targetPosition - ctx.selfPosition);
+        ctx.outPhysics->velocity.x = dir.x * spd;
+        ctx.outPhysics->velocity.z = dir.z * spd;
+        // Rotation: face direction
+        float yaw = std::atan2(dir.x, dir.z);
+        if (ctx.outSelfRotation) *ctx.outSelfRotation = glm::angleAxis(yaw, glm::vec3(0, 1, 0));
+        if (ctx.outSelfRotationEuler) ctx.outSelfRotationEuler->y = yaw;
+        return;
+    }
     if (!ctx.outSelfPosition) return;
     float dist = glm::distance(*ctx.outSelfPosition, ctx.targetPosition);
     if (dist <= 0.05f) return;
-    if (dist < 0.001f) return; // guard before normalize
+    if (dist < 0.001f) return;
     float spd = speed ? speed->getFloat() : speedValue;
     glm::vec3 dir = glm::normalize(ctx.targetPosition - *ctx.outSelfPosition);
     *ctx.outSelfPosition += dir * spd * ctx.dt;
-    // Orient to face dir (yaw)
-    if (ctx.outSelfRotation) {
-        // Compute quat looking along dir (assume up = +Y, forward = +Z? Use lookAt)
-        // Simple yaw quaternion around Y: atan2(dir.x, dir.z)
-        float yaw = std::atan2(dir.x, dir.z);
-        *ctx.outSelfRotation = glm::angleAxis(yaw, glm::vec3(0, 1, 0));
-    }
-    if (ctx.outSelfRotationEuler) {
-        // Euler vec3 rotation: store yaw in y
-        float yaw = std::atan2(dir.x, dir.z);
-        ctx.outSelfRotationEuler->y = yaw;
-    }
+    float yaw = std::atan2(dir.x, dir.z);
+    if (ctx.outSelfRotation) *ctx.outSelfRotation = glm::angleAxis(yaw, glm::vec3(0, 1, 0));
+    if (ctx.outSelfRotationEuler) ctx.outSelfRotationEuler->y = yaw;
 }
 std::unique_ptr<GameplayNode> MoveTowardsNode::clone() const {
     auto up = std::make_unique<MoveTowardsNode>();
@@ -95,5 +101,30 @@ std::unique_ptr<GameplayNode> MoveTowardsNode::clone() const {
     up->enabledValue = enabledValue;
     return up;
 }
+
+void ApplyImpulseNode::execute(float) {}
+void ApplyImpulseNode::execute(const GraphContext& ctx, AnimParams& /*params*/) {
+    bool trig = trigger ? trigger->getBool() : false;
+    bool rising = trig && !prevTrigger;
+    prevTrigger = trig;
+    if (!rising) return;
+    if (!ctx.outPhysics) return;
+    if (!ctx.outPhysics->isGrounded) return;
+    float impY = impulseNode ? impulseNode->getFloat() : impulse.y;
+    // If impulseNode provides float, use it as Y impulse; otherwise use stored vector's Y
+    if (impulseNode) impY = impulseNode->getFloat();
+    else impY = impulse.y;
+    float mass = ctx.outPhysics->mass > 0.0f ? ctx.outPhysics->mass : 1.0f;
+    ctx.outPhysics->velocity.y += impY / mass;
+}
+std::unique_ptr<GameplayNode> ApplyImpulseNode::clone() const {
+    auto up = std::make_unique<ApplyImpulseNode>();
+    up->impulseNode = impulseNode;
+    up->trigger = trigger;
+    up->impulse = impulse;
+    up->prevTrigger = false; // fresh state per clone
+    return up;
+}
+
 
 } // namespace engine

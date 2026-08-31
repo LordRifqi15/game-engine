@@ -34,7 +34,8 @@ struct CompareFloatNode : GameplayNode {
     static Op opFromString(const std::string& s);
 };
 
-// Spatial action: move self towards target if enabled
+// Spatial action: move self towards target if enabled (velocity-based, Task 037)
+// Old: directly mutated outSelfPosition. New: sets ctx.outPhysics->velocity.x/z
 struct MoveTowardsNode : GameplayNode {
     GameplayNode* speed = nullptr;
     GameplayNode* enabled = nullptr;
@@ -43,6 +44,18 @@ struct MoveTowardsNode : GameplayNode {
     void execute(float dt) override;
     void execute(const GraphContext& ctx, AnimParams& params) override;
     std::string typeName() const override { return "MoveTowards"; }
+    std::unique_ptr<GameplayNode> clone() const override;
+};
+
+// Physics: apply upward impulse on rising edge if grounded (enables jump)
+struct ApplyImpulseNode : GameplayNode {
+    GameplayNode* impulseNode = nullptr; // optional float source for impulse.y
+    GameplayNode* trigger = nullptr;
+    glm::vec3 impulse{0.0f, 5.0f, 0.0f};
+    bool prevTrigger = false;
+    void execute(float dt) override;
+    void execute(const GraphContext& ctx, AnimParams& params) override;
+    std::string typeName() const override { return "ApplyImpulse"; }
     std::unique_ptr<GameplayNode> clone() const override;
 };
 

@@ -41,6 +41,7 @@ add_executable(engine
     src/core/anim_graph_ai.cpp
     src/core/gameplay_graph.cpp
     src/modules/ai/GameplayNodesAI.cpp
+    src/modules/physics/PhysicsSystem.cpp
     src/editor/anim_graph_editor.cpp
     src/platform/window.cpp
     src/platform/input.cpp

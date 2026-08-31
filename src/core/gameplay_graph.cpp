@@ -172,6 +172,10 @@ std::shared_ptr<GameplayGraph> GameplayGraph::clone(AnimParams* newTarget) const
             auto* d = static_cast<MoveTowardsNode*>(dst);
             if (s->speed) d->speed = remap[s->speed];
             if (s->enabled) d->enabled = remap[s->enabled];
+        } else if (auto* s = dynamic_cast<ApplyImpulseNode*>(src)) {
+            auto* d = static_cast<ApplyImpulseNode*>(dst);
+            if (s->impulseNode) d->impulseNode = remap[s->impulseNode];
+            if (s->trigger) d->trigger = remap[s->trigger];
         }
     }
     return g;
@@ -225,6 +229,11 @@ std::shared_ptr<GameplayGraph> GameplayGraph::makeMinimal(AnimParams* target) {
     setJump->input = space;
     setJump->target = target;
     setJump->member = &AnimParams::jumpPressed;
+
+    // Task 037: real jump via impulse (if physics available, GraphContext will supply outPhysics)
+    auto* applyImpulse = g->addNode<ApplyImpulseNode>();
+    applyImpulse->trigger = space;
+    applyImpulse->impulse = glm::vec3(0.0f, 5.0f, 0.0f);
 
     return g;
 }
@@ -308,8 +317,11 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
             auto* m = g->addNode<MoveTowardsNode>();
             m->speedValue = n.value != 0.0f ? n.value : 2.0f;
             node = m;
+        } else if (n.type == "ApplyImpulse") {
+            auto* imp = g->addNode<ApplyImpulseNode>();
+            imp->impulse.y = n.value != 0.0f ? n.value : 5.0f;
+            node = imp;
         }
-        if (node) map[n.id] = node;
     }
     for (auto& l : ed.links) {
         auto itTo = map.find(l.toNode);
@@ -336,6 +348,9 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
         } else if (auto* m = dynamic_cast<MoveTowardsNode*>(to)) {
             if (l.toSlot == 0) m->speed = from;
             else if (l.toSlot == 1) m->enabled = from;
+        } else if (auto* imp = dynamic_cast<ApplyImpulseNode*>(to)) {
+            if (l.toSlot == 0) imp->impulseNode = from;
+            else if (l.toSlot == 1) imp->trigger = from;
         }
     }
     g->setTarget(target);

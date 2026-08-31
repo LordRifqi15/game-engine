@@ -9,6 +9,7 @@
 #include "core/scene.h"
 #include "core/time.h"
 #include "core/world.h"
+#include "modules/physics/PhysicsSystem.hpp"
 
 #include "editor/anim_graph_editor.h"
 
@@ -59,6 +60,8 @@ private:
     Entity gameplayEditorTarget_ = kInvalidEntity;
     // Task 036: player entity for NPC targeting
     Entity playerEntity_ = kInvalidEntity;
+    // Task 037: physics system (velocity + gravity + ground)
+    PhysicsSystem physicsSystem_;
 };
 
 
