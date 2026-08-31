@@ -3,50 +3,22 @@
     {
       "id": 1,
       "type": "Float",
-      "value": 1.5,
+      "value": 2.2,
       "pos": [40, 40]
     },
     {
       "id": 2,
-      "type": "Timer",
-      "value": 3.0,
-      "pos": [40, 140]
-    },
-    {
-      "id": 3,
-      "type": "RequestPath",
-      "value": 0.0,
-      "pos": [200, 80]
-    },
-    {
-      "id": 4,
-      "type": "FollowPath",
+      "type": "MoveTowards",
       "value": 2.2,
-      "pos": [200, 200]
-    },
-    {
-      "id": 5,
-      "type": "SetParam",
-      "targetParam": "speed",
-      "pos": [400, 200]
+      "pos": [200, 80]
     }
   ],
   "links": [
     {
-      "from": 2,
-      "to": 3,
-      "toSlot": 1
-    },
-    {
       "from": 1,
-      "to": 4,
-      "toSlot": 0
-    },
-    {
-      "from": 4,
-      "to": 5,
+      "to": 2,
       "toSlot": 0
     }
   ],
-  "output": 5
+  "output": 2
 }
