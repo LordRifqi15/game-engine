@@ -11,6 +11,7 @@ struct PhysicalImage {
     VkFormat format{VK_FORMAT_UNDEFINED};
     VkExtent2D extent{0, 0};
     VkImageUsageFlags usage{0};
+    uint32_t mipLevels{1};
     VkImageLayout currentLayout{VK_IMAGE_LAYOUT_UNDEFINED};
     uint32_t lastUsedPassIndex{UINT32_MAX};
     uint64_t lastUsedFrameIndex{0};

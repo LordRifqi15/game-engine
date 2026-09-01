@@ -15,6 +15,8 @@ enum class ResourceUsage {
     ColorAttachment,
     DepthStencilAttachment,
     ShaderRead,
+    ComputeRead,
+    ComputeWrite,
     TransferSrc,
     TransferDst,
     Present
@@ -27,7 +29,8 @@ enum class BufferUsage {
     FragmentRead,
     VertexRead,
     TransferSrc,
-    TransferDst
+    TransferDst,
+    IndirectBuffer
 };
 
 struct BufferHandle {
@@ -64,6 +67,7 @@ struct ImageDesc {
     VkFormat format{VK_FORMAT_R8G8B8A8_UNORM};
     VkExtent2D extent{0, 0};
     VkImageUsageFlags usage{0};
+    uint32_t mipLevels{1};
 };
 
 struct RenderGraphResource {

@@ -1,0 +1,121 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct GPUInstanceData {
+    mat4 model;
+    vec4 boundingSphere; // xyz: center, w: radius
+    uint meshID;
+    uint materialID;
+    uint batchIndex;
+    uint flags;
+};
+
+struct GPUIndirectCommand {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    int  vertexOffset;
+    uint firstInstance;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer AllInstances {
+    GPUInstanceData instances[];
+};
+
+layout(std430, set = 0, binding = 1) buffer IndirectDrawCommands {
+    GPUIndirectCommand commands[];
+};
+
+layout(std430, set = 0, binding = 2) writeonly buffer VisibleInstanceIndices {
+    uint visibleInstanceIDs[];
+};
+
+layout(set = 0, binding = 3) uniform sampler2D hizPyramid;
+
+layout(push_constant) uniform CullingParams {
+    mat4 view;
+    mat4 proj;
+    vec4 frustumPlanes[6];
+    vec2 hizExtent;
+    float zNear;
+    float zFar;
+    uint totalInstances;
+    uint maxMipLevel;
+} culling;
+
+bool isFrustumVisible(vec3 center, float radius) {
+    for (int i = 0; i < 6; ++i) {
+        if (dot(culling.frustumPlanes[i].xyz, center) + culling.frustumPlanes[i].w < -radius) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void main() {
+    uint instanceID = gl_GlobalInvocationID.x;
+    if (instanceID >= culling.totalInstances) return;
+
+    GPUInstanceData inst = instances[instanceID];
+    vec3 worldCenter = (inst.model * vec4(inst.boundingSphere.xyz, 1.0)).xyz;
+    float scale = max(max(length(inst.model[0].xyz), length(inst.model[1].xyz)), length(inst.model[2].xyz));
+    float radius = inst.boundingSphere.w * scale;
+
+    // 1. Frustum Test
+    if (!isFrustumVisible(worldCenter, radius)) return;
+
+    // 2. Transform to View Space
+    vec4 viewCenterH = culling.view * vec4(worldCenter, 1.0);
+    vec3 viewCenter = viewCenterH.xyz;
+
+    // Guard against near-plane clipping singularities
+    if (viewCenter.z + radius >= -culling.zNear) {
+        // Intersects or behind near plane -> unconditionally visible
+        uint drawIndex = inst.batchIndex;
+        uint slot = atomicAdd(commands[drawIndex].instanceCount, 1);
+        visibleInstanceIDs[commands[drawIndex].firstInstance + slot] = instanceID;
+        return;
+    }
+
+    // 3. Project Bounding Sphere to Screen-Space AABB
+    // Calculate AABB extents in normalized device coordinates [0, 1]
+    vec4 clipCenter = culling.proj * vec4(viewCenter, 1.0);
+    vec2 ndcCenter = (clipCenter.xy / clipCenter.w) * 0.5 + 0.5;
+    
+    float P00 = culling.proj[0][0];
+    float P11 = culling.proj[1][1];
+    float radiusX = (radius * P00) / -viewCenter.z;
+    float radiusY = (radius * P11) / -viewCenter.z;
+
+    vec2 aabbMin = clamp(ndcCenter - vec2(radiusX, radiusY) * 0.5, 0.0, 1.0);
+    vec2 aabbMax = clamp(ndcCenter + vec2(radiusX, radiusY) * 0.5, 0.0, 1.0);
+    vec2 aabbSize = (aabbMax - aabbMin) * culling.hizExtent;
+
+    // 4. Calculate Optimal Hi-Z Mip Level
+    float maxDimension = max(aabbSize.x, aabbSize.y);
+    float mip = clamp(ceil(log2(max(maxDimension, 1.0))), 0.0, float(culling.maxMipLevel));
+
+    // 5. Sample Hi-Z (Conservative 2x2 texels)
+    vec4 samples;
+    samples.x = textureLod(hizPyramid, vec2(aabbMin.x, aabbMin.y), mip).r;
+    samples.y = textureLod(hizPyramid, vec2(aabbMax.x, aabbMin.y), mip).r;
+    samples.z = textureLod(hizPyramid, vec2(aabbMin.x, aabbMax.y), mip).r;
+    samples.w = textureLod(hizPyramid, vec2(aabbMax.x, aabbMax.y), mip).r;
+    float maxHizDepth = max(max(samples.x, samples.y), max(samples.z, samples.w));
+
+    // 6. Closest point on bounding sphere depth
+    vec4 closestViewPoint = vec4(viewCenter.x, viewCenter.y, viewCenter.z + radius, 1.0);
+    vec4 closestClipPoint = culling.proj * closestViewPoint;
+    float sphereNearestDepth = closestClipPoint.z / closestClipPoint.w;
+
+    // Occlusion check (if closest point is farther than the max occluder depth in Hi-Z, it's occluded)
+    if (sphereNearestDepth > maxHizDepth) {
+        return; // Occluded
+    }
+
+    // 7. Append Instance to Indirect Draw Batch
+    uint drawIndex = inst.batchIndex;
+    uint slot = atomicAdd(commands[drawIndex].instanceCount, 1);
+    visibleInstanceIDs[commands[drawIndex].firstInstance + slot] = instanceID;
+}

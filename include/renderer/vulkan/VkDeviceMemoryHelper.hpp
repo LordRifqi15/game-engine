@@ -9,5 +9,8 @@ VkDeviceMemory allocateImageMemory(VkDevice device, VkPhysicalDevice physicalDev
 void createImageWithMemory(VkDevice device, VkPhysicalDevice physicalDevice,
                            VkFormat format, VkExtent2D extent, VkImageUsageFlags usage,
                            VkImage* outImage, VkDeviceMemory* outMemory, VkImageView* outView);
+void createImageWithMemory(VkDevice device, VkPhysicalDevice physicalDevice,
+                           VkFormat format, VkExtent2D extent, uint32_t mipLevels, VkImageUsageFlags usage,
+                           VkImage* outImage, VkDeviceMemory* outMemory, VkImageView* outView);
 
 } // namespace Engine

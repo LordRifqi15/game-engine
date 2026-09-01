@@ -57,6 +57,9 @@ add_executable(engine
     src/renderer/renderer.cpp
     src/renderer/deferred/GBuffer.cpp
     src/renderer/deferred/DeferredPipeline.cpp
+    src/renderer/lighting/ClusteredLighting.cpp
+    src/renderer/culling/HiZPyramid.cpp
+    src/renderer/culling/GPUCullingSystem.cpp
     src/renderer/graph/RenderGraph.cpp
     src/renderer/graph/RenderGraphBuilder.cpp
     src/renderer/graph/RenderGraphResources.cpp
@@ -88,6 +91,9 @@ set(SHADER_SRC
     shaders/skybox.frag
     shaders/cull.comp
     shaders/hiz.comp
+    shaders/cluster_cull.comp
+    shaders/hiz_build.comp
+    shaders/instance_cull.comp
     shaders/gbuffer.vert
     shaders/gbuffer.frag
     shaders/deferred_lighting.vert
@@ -103,6 +109,9 @@ set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/skybox.frag.spv
     ${CMAKE_BINARY_DIR}/shaders/cull.comp.spv
     ${CMAKE_BINARY_DIR}/shaders/hiz.comp.spv
+    ${CMAKE_BINARY_DIR}/shaders/cluster_cull.comp.spv
+    ${CMAKE_BINARY_DIR}/shaders/hiz_build.comp.spv
+    ${CMAKE_BINARY_DIR}/shaders/instance_cull.comp.spv
     ${CMAKE_BINARY_DIR}/shaders/gbuffer.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/gbuffer.frag.spv
     ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.vert.spv
@@ -119,6 +128,9 @@ add_custom_command(
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/skybox.vert -o ${CMAKE_BINARY_DIR}/shaders/skybox.vert.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/skybox.frag -o ${CMAKE_BINARY_DIR}/shaders/skybox.frag.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/cull.comp -o ${CMAKE_BINARY_DIR}/shaders/cull.comp.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/cluster_cull.comp -o ${CMAKE_BINARY_DIR}/shaders/cluster_cull.comp.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/hiz_build.comp -o ${CMAKE_BINARY_DIR}/shaders/hiz_build.comp.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/instance_cull.comp -o ${CMAKE_BINARY_DIR}/shaders/instance_cull.comp.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/prepass.frag -o ${CMAKE_BINARY_DIR}/shaders/prepass.frag.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/hiz.comp -o ${CMAKE_BINARY_DIR}/shaders/hiz.comp.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer.vert -o ${CMAKE_BINARY_DIR}/shaders/gbuffer.vert.spv

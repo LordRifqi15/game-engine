@@ -30,6 +30,12 @@ VkDeviceMemory allocateImageMemory(VkDevice device, VkPhysicalDevice physicalDev
 void createImageWithMemory(VkDevice device, VkPhysicalDevice physicalDevice,
                            VkFormat format, VkExtent2D extent, VkImageUsageFlags usage,
                            VkImage* outImage, VkDeviceMemory* outMemory, VkImageView* outView) {
+    createImageWithMemory(device, physicalDevice, format, extent, 1, usage, outImage, outMemory, outView);
+}
+
+void createImageWithMemory(VkDevice device, VkPhysicalDevice physicalDevice,
+                           VkFormat format, VkExtent2D extent, uint32_t mipLevels, VkImageUsageFlags usage,
+                           VkImage* outImage, VkDeviceMemory* outMemory, VkImageView* outView) {
     if (device == VK_NULL_HANDLE) {
         // dummy handles for tests / headless
         static uint64_t nextId = 0x1000;
@@ -43,7 +49,7 @@ void createImageWithMemory(VkDevice device, VkPhysicalDevice physicalDevice,
     ci.imageType = VK_IMAGE_TYPE_2D;
     ci.format = format;
     ci.extent = {extent.width, extent.height, 1};
-    ci.mipLevels = 1;
+    ci.mipLevels = mipLevels;
     ci.arrayLayers = 1;
     ci.samples = VK_SAMPLE_COUNT_1_BIT;
     ci.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -61,7 +67,7 @@ void createImageWithMemory(VkDevice device, VkPhysicalDevice physicalDevice,
     if (format == VK_FORMAT_D16_UNORM || format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_X8_D24_UNORM_PACK32) aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
     vi.subresourceRange.aspectMask = aspect;
     vi.subresourceRange.baseMipLevel = 0;
-    vi.subresourceRange.levelCount = 1;
+    vi.subresourceRange.levelCount = mipLevels;
     vi.subresourceRange.baseArrayLayer = 0;
     vi.subresourceRange.layerCount = 1;
     if (vkCreateImageView(device, &vi, nullptr, outView) != VK_SUCCESS) throw std::runtime_error("vkCreateImageView failed");

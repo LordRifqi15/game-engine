@@ -1,0 +1,28 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D inParentMip;
+layout(set = 0, binding = 1, r32f) uniform writeonly image2D outChildMip;
+
+layout(push_constant) uniform PushConsts {
+    vec2 childExtent;
+} params;
+
+void main() {
+    ivec2 childCoord = ivec2(gl_GlobalInvocationID.xy);
+    if (childCoord.x >= int(params.childExtent.x) || childCoord.y >= int(params.childExtent.y)) {
+        return;
+    }
+
+    // Map child pixel center to parent UV coordinates
+    vec2 uv = (vec2(childCoord) + vec2(0.5)) / params.childExtent;
+
+    // Gather 2x2 neighborhood depths from parent mip
+    vec4 depths = textureGather(inParentMip, uv, 0);
+
+    // Standard Vulkan depth: conservative occluder uses max depth
+    float maxDepth = max(max(depths.x, depths.y), max(depths.z, depths.w));
+
+    imageStore(outChildMip, childCoord, vec4(maxDepth, 0.0, 0.0, 0.0));
+}

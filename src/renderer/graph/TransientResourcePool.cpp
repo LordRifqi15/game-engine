@@ -14,6 +14,7 @@ bool TransientResourcePool::isCompatible(const PhysicalImage& physical, const Im
     return physical.format == desc.format &&
            physical.extent.width == desc.extent.width &&
            physical.extent.height == desc.extent.height &&
+           physical.mipLevels == desc.mipLevels &&
            (physical.usage & desc.usage) == desc.usage;
 }
 
@@ -22,6 +23,7 @@ PhysicalImage* TransientResourcePool::createPhysicalImage(const ImageDesc& desc)
     phys->format = desc.format;
     phys->extent = desc.extent;
     phys->usage = desc.usage;
+    phys->mipLevels = desc.mipLevels;
     phys->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     phys->lastUsedPassIndex = UINT32_MAX;
     phys->lastUsedFrameIndex = 0;
@@ -29,7 +31,7 @@ PhysicalImage* TransientResourcePool::createPhysicalImage(const ImageDesc& desc)
     VkDeviceMemory mem = VK_NULL_HANDLE;
     VkImageView view = VK_NULL_HANDLE;
     // Use helper; handles dummy when device null
-    createImageWithMemory(device_, physicalDevice_, desc.format, desc.extent, desc.usage, &img, &mem, &view);
+    createImageWithMemory(device_, physicalDevice_, desc.format, desc.extent, desc.mipLevels, desc.usage, &img, &mem, &view);
     phys->image = img;
     phys->memory = mem;
     phys->view = view;
