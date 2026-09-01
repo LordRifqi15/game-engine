@@ -62,6 +62,9 @@ add_executable(engine
     src/renderer/culling/GPUCullingSystem.cpp
     src/renderer/scheduler/TimelineSync.cpp
     src/renderer/scheduler/FrameScheduler.cpp
+    src/renderer/material/BindlessDescriptorManager.cpp
+    src/renderer/material/TextureRegistry.cpp
+    src/renderer/vulkan/VkFeatureManager.cpp
     src/renderer/graph/RenderGraph.cpp
     src/renderer/graph/RenderGraphBuilder.cpp
     src/renderer/graph/RenderGraphResources.cpp
@@ -98,6 +101,8 @@ set(SHADER_SRC
     shaders/instance_cull.comp
     shaders/gbuffer.vert
     shaders/gbuffer.frag
+    shaders/gbuffer_bindless.vert
+    shaders/gbuffer_bindless.frag
     shaders/deferred_lighting.vert
     shaders/deferred_lighting.frag
 )
@@ -116,6 +121,8 @@ set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/instance_cull.comp.spv
     ${CMAKE_BINARY_DIR}/shaders/gbuffer.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/gbuffer.frag.spv
+    ${CMAKE_BINARY_DIR}/shaders/gbuffer_bindless.vert.spv
+    ${CMAKE_BINARY_DIR}/shaders/gbuffer_bindless.frag.spv
     ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.frag.spv
 )
@@ -137,6 +144,8 @@ add_custom_command(
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/hiz.comp -o ${CMAKE_BINARY_DIR}/shaders/hiz.comp.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer.vert -o ${CMAKE_BINARY_DIR}/shaders/gbuffer.vert.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer.frag -o ${CMAKE_BINARY_DIR}/shaders/gbuffer.frag.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer_bindless.vert -o ${CMAKE_BINARY_DIR}/shaders/gbuffer_bindless.vert.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer_bindless.frag -o ${CMAKE_BINARY_DIR}/shaders/gbuffer_bindless.frag.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/deferred_lighting.vert -o ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.vert.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/deferred_lighting.frag -o ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.frag.spv
     DEPENDS ${SHADER_SRC}
