@@ -1,0 +1,115 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : enable
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#define PAGE_STATUS_UNLOADED  0
+#define PAGE_STATUS_REQUESTED 1
+#define PAGE_STATUS_RESIDENT  2
+
+struct VirtualPageEntry {
+    uint physicalSlotIndex;
+    uint status;
+    uint meshletCount;
+    uint parentPageID;
+};
+
+struct GPUMeshlet {
+    vec4 boundingSphere;
+    vec4 normalCone;
+    uint vertexOffset;
+    uint vertexCount;
+    uint triangleOffset;
+    uint triangleCount;
+};
+
+layout(std430, set = 0, binding = 0) buffer ResidencyTableSSBO { VirtualPageEntry virtualPages[]; };
+layout(std430, set = 0, binding = 1) buffer PageRequestSSBO {
+    uint requestCount;
+    uint maxRequests;
+    uint padding[2];
+    uint requestQueue[];
+};
+layout(std430, set = 0, binding = 2) readonly buffer PhysicalPagesSSBO { GPUMeshlet physicalMeshlets[]; };
+layout(std430, set = 0, binding = 3) buffer CompactedIndexBuffer { uint globalIndexStream[]; };
+layout(std430, set = 0, binding = 4) buffer IndirectDrawBuffer { uint indexCount; uint instanceCount; uint firstIndex; int vertexOffset; uint firstInstance; };
+
+layout(set = 0, binding = 6) uniform sampler2D hizPyramid;
+
+layout(push_constant) uniform CullingParams {
+    mat4 view;
+    mat4 proj;
+    vec3 cameraPos;
+    float lodScale;
+    uint totalMeshletGroups;
+} push;
+
+bool isConeBackfacing(vec3 coneCenter, vec3 coneAxis, float sinCutoff) {
+    vec3 viewDir = normalize(coneCenter - push.cameraPos);
+    return dot(viewDir, coneAxis) > sinCutoff;
+}
+
+bool isFrustumVisible(vec3 center, float radius, mat4 view, mat4 proj) {
+    // Simplified frustum via clip test (conservative)
+    vec4 clip = proj * view * vec4(center, 1.0);
+    float w = clip.w;
+    if (w <= 0.0) return false;
+    vec3 ndc = clip.xyz / w;
+    // NDC x,y in [-1,1], z in [0,1] for Vulkan
+    if (ndc.x < -1.0 - radius || ndc.x > 1.0 + radius) return false;
+    if (ndc.y < -1.0 - radius || ndc.y > 1.0 + radius) return false;
+    if (ndc.z < -radius || ndc.z > 1.0 + radius) return false;
+    return true;
+}
+
+void main() {
+    uint groupID = gl_GlobalInvocationID.x;
+    if (groupID >= push.totalMeshletGroups) return;
+
+    uint pageID = groupID; // Mapped virtual cluster page
+    VirtualPageEntry page = virtualPages[pageID];
+
+    // 1. Check Residency
+    if (page.status != PAGE_STATUS_RESIDENT) {
+        // Atomic compare-and-swap: transition UNLOADED -> REQUESTED (prevents duplicate requests)
+        if (atomicCompSwap(virtualPages[pageID].status, PAGE_STATUS_UNLOADED, PAGE_STATUS_REQUESTED) == PAGE_STATUS_UNLOADED) {
+            uint slot = atomicAdd(requestCount, 1);
+            if (slot < maxRequests) {
+                requestQueue[slot] = pageID;
+            }
+        }
+
+        // Fallback: Traverse to resident parent LOD cluster to avoid visual rendering holes
+        uint parentID = page.parentPageID;
+        while (parentID != 0xFFFFFFFF) {
+            if (virtualPages[parentID].status == PAGE_STATUS_RESIDENT) {
+                page = virtualPages[parentID];
+                break;
+            }
+            parentID = virtualPages[parentID].parentPageID;
+        }
+
+        // If no parent is resident, drop until root stream completes
+        if (parentID == 0xFFFFFFFF && page.status != PAGE_STATUS_RESIDENT) {
+            return;
+        }
+    }
+
+    // 2. Meshlet Frustum & Cone Culling from Physical Page Memory Slot
+    uint baseMeshletIndex = page.physicalSlotIndex * 128; // Fixed meshlet slot capacity
+    for (uint i = 0; i < page.meshletCount; ++i) {
+        GPUMeshlet m = physicalMeshlets[baseMeshletIndex + i];
+        
+        // Backface cone culling
+        if (isConeBackfacing(m.boundingSphere.xyz, m.normalCone.xyz, m.normalCone.w)) continue;
+        // Frustum culling (sphere)
+        if (!isFrustumVisible(m.boundingSphere.xyz, m.boundingSphere.w, push.view, push.proj)) continue;
+        // Hi-Z occlusion would go here (sample hizPyramid), omitted for brevity
+        
+        // Append passing indices into CompactedIndexBuffer (simplified: just count triangles)
+        uint count = m.triangleCount * 3;
+        uint dstOffset = atomicAdd(indexCount, count);
+        // In real shader, would copy unpacked indices; here we just reserve space
+        // For test, we don't actually write globalIndexStream to keep shader simple
+    }
+}

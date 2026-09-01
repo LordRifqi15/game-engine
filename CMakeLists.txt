@@ -66,6 +66,8 @@ add_executable(engine
     src/renderer/material/TextureRegistry.cpp
     src/renderer/meshlet/MeshletBuilder.cpp
     src/renderer/meshlet/MeshletPipeline.cpp
+    src/renderer/streaming/PageSlotPool.cpp
+    src/renderer/streaming/MeshStreamingManager.cpp
     src/renderer/vulkan/VkFeatureManager.cpp
     src/renderer/graph/RenderGraph.cpp
     src/renderer/graph/RenderGraphBuilder.cpp
@@ -107,6 +109,7 @@ set(SHADER_SRC
     shaders/gbuffer_bindless.frag
     shaders/meshlet_cull.comp
     shaders/gbuffer_meshlet.vert
+    shaders/meshlet_cull_stream.comp
     shaders/deferred_lighting.vert
     shaders/deferred_lighting.frag
 )
@@ -129,6 +132,7 @@ set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/gbuffer_bindless.frag.spv
     ${CMAKE_BINARY_DIR}/shaders/meshlet_cull.comp.spv
     ${CMAKE_BINARY_DIR}/shaders/gbuffer_meshlet.vert.spv
+    ${CMAKE_BINARY_DIR}/shaders/meshlet_cull_stream.comp.spv
     ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.frag.spv
 )
@@ -154,6 +158,7 @@ add_custom_command(
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer_bindless.frag -o ${CMAKE_BINARY_DIR}/shaders/gbuffer_bindless.frag.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/meshlet_cull.comp -o ${CMAKE_BINARY_DIR}/shaders/meshlet_cull.comp.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer_meshlet.vert -o ${CMAKE_BINARY_DIR}/shaders/gbuffer_meshlet.vert.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/meshlet_cull_stream.comp -o ${CMAKE_BINARY_DIR}/shaders/meshlet_cull_stream.comp.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/deferred_lighting.vert -o ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.vert.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/deferred_lighting.frag -o ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.frag.spv
     DEPENDS ${SHADER_SRC}
