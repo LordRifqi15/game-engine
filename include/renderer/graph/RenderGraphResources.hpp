@@ -20,6 +20,38 @@ enum class ResourceUsage {
     Present
 };
 
+enum class BufferUsage {
+    None,
+    ComputeRead,
+    ComputeWrite,
+    FragmentRead,
+    VertexRead,
+    TransferSrc,
+    TransferDst
+};
+
+struct BufferHandle {
+    uint32_t id{UINT32_MAX};
+    bool isValid() const { return id != UINT32_MAX; }
+    bool operator==(const BufferHandle& o) const { return id == o.id; }
+    bool operator!=(const BufferHandle& o) const { return id != o.id; }
+};
+
+struct BufferDesc {
+    std::string name;
+    size_t size{0};
+    VkBufferUsageFlags usage{0};
+};
+
+struct RenderGraphBufferResource {
+    std::string name;
+    ResourceType type{ResourceType::Transient};
+    BufferDesc desc;
+    VkBuffer buffer{VK_NULL_HANDLE};
+    VkDeviceMemory memory{VK_NULL_HANDLE};
+    BufferUsage lastUsage{BufferUsage::None};
+};
+
 struct ResourceHandle {
     uint32_t id{UINT32_MAX};
     bool isValid() const { return id != UINT32_MAX; }
@@ -50,7 +82,11 @@ struct RenderGraphResource {
 namespace engine {
     using ResourceType = Engine::ResourceType;
     using ResourceUsage = Engine::ResourceUsage;
+    using BufferUsage = Engine::BufferUsage;
     using ResourceHandle = Engine::ResourceHandle;
+    using BufferHandle = Engine::BufferHandle;
     using ImageDesc = Engine::ImageDesc;
+    using BufferDesc = Engine::BufferDesc;
     using RenderGraphResource = Engine::RenderGraphResource;
+    using RenderGraphBufferResource = Engine::RenderGraphBufferResource;
 }

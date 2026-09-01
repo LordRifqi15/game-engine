@@ -16,6 +16,10 @@ public:
     ResourceHandle read(ResourceHandle handle, ResourceUsage usage);
     ResourceHandle write(ResourceHandle handle, ResourceUsage usage);
 
+    BufferHandle createTransientBuffer(const BufferDesc& desc);
+    BufferHandle read(BufferHandle handle, BufferUsage usage);
+    BufferHandle write(BufferHandle handle, BufferUsage usage);
+
 private:
     RenderGraph& graph_;
     uint32_t passIndex_{0};

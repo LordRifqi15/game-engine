@@ -12,6 +12,8 @@ struct RenderPassNode {
     uint32_t passIndex{0};
     std::vector<std::pair<ResourceHandle, ResourceUsage>> reads;
     std::vector<std::pair<ResourceHandle, ResourceUsage>> writes;
+    std::vector<std::pair<BufferHandle, BufferUsage>> bufferReads;
+    std::vector<std::pair<BufferHandle, BufferUsage>> bufferWrites;
     std::function<void(VkCommandBuffer)> executeCallback;
 };
 

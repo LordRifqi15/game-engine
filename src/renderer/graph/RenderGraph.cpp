@@ -51,6 +51,44 @@ void RenderGraph::addWrite(uint32_t passIndex, ResourceHandle h, ResourceUsage u
     passes_[passIndex].writes.emplace_back(h, u);
 }
 
+BufferHandle RenderGraph::importBuffer(const std::string& name, VkBuffer buffer, size_t size, BufferUsage initialUsage) {
+    RenderGraphBufferResource res;
+    res.name = name;
+    res.type = ResourceType::Imported;
+    res.desc.name = name;
+    res.desc.size = size;
+    res.desc.usage = 0;
+    res.buffer = buffer;
+    res.memory = VK_NULL_HANDLE;
+    res.lastUsage = initialUsage;
+    uint32_t id = static_cast<uint32_t>(bufferResources_.size());
+    bufferResources_.push_back(std::move(res));
+    return BufferHandle{id};
+}
+
+BufferHandle RenderGraph::createBuffer(const BufferDesc& desc) {
+    RenderGraphBufferResource res;
+    res.name = desc.name;
+    res.type = ResourceType::Transient;
+    res.desc = desc;
+    res.buffer = VK_NULL_HANDLE;
+    res.memory = VK_NULL_HANDLE;
+    res.lastUsage = BufferUsage::None;
+    uint32_t id = static_cast<uint32_t>(bufferResources_.size());
+    bufferResources_.push_back(std::move(res));
+    return BufferHandle{id};
+}
+
+void RenderGraph::addBufferRead(uint32_t passIndex, BufferHandle h, BufferUsage u) {
+    if (passIndex >= passes_.size() || !h.isValid() || h.id >= bufferResources_.size()) return;
+    passes_[passIndex].bufferReads.emplace_back(h, u);
+}
+
+void RenderGraph::addBufferWrite(uint32_t passIndex, BufferHandle h, BufferUsage u) {
+    if (passIndex >= passes_.size() || !h.isValid() || h.id >= bufferResources_.size()) return;
+    passes_[passIndex].bufferWrites.emplace_back(h, u);
+}
+
 bool RenderGraph::compile() {
     const uint32_t n = static_cast<uint32_t>(passes_.size());
     sortedPassIndices_.clear();
@@ -113,6 +151,32 @@ bool RenderGraph::compile() {
         }
     }
 
+    // 2b. Buffer DAG edges (Clustered)
+    std::unordered_map<uint32_t, uint32_t> writerForBuf;
+    std::unordered_map<uint32_t, std::vector<uint32_t>> writersForBuf;
+    for (uint32_t i = 0; i < n; ++i) {
+        for (auto& [h, u] : passes_[i].bufferWrites) {
+            if (!h.isValid()) continue;
+            auto it = writerForBuf.find(h.id);
+            if (it == writerForBuf.end()) writerForBuf[h.id] = i;
+            writersForBuf[h.id].push_back(i);
+        }
+    }
+    for (auto& [resId, writers] : writersForBuf) {
+        for (size_t k = 1; k < writers.size(); ++k) addEdge(writers[k-1], writers[k]);
+    }
+    for (uint32_t i = 0; i < n; ++i) {
+        for (auto& [h, u] : passes_[i].bufferReads) {
+            if (!h.isValid()) continue;
+            auto it = writerForBuf.find(h.id);
+            if (it != writerForBuf.end()) {
+                addEdge(it->second, i);
+                auto wit = writersForBuf.find(h.id);
+                if (wit != writersForBuf.end()) for (uint32_t w : wit->second) if (w != i) addEdge(w, i);
+            }
+        }
+    }
+
     // 3. Kahn topological sort (stable: respect declaration order for tie-break)
     std::queue<uint32_t> q;
     for (uint32_t i = 0; i < n; ++i) if (indeg[i]==0) q.push(i);
@@ -169,19 +233,29 @@ bool RenderGraph::compile() {
             }
         }
     } else {
-        // No Present: keep passes that are read by others OR write to imported (final output)
+        // No Present: keep passes that are read by others OR write to imported (final output) - images + buffers
         std::unordered_set<uint32_t> allReadRes;
-        for (auto& p : passes_) for (auto& [h,u] : p.reads) if (h.isValid()) allReadRes.insert(h.id);
+        std::unordered_set<uint32_t> allReadBuf;
+        for (auto& p : passes_) {
+            for (auto& [h,u] : p.reads) if (h.isValid()) allReadRes.insert(h.id);
+            for (auto& [h,u] : p.bufferReads) if (h.isValid()) allReadBuf.insert(h.id);
+        }
         for (uint32_t pi : sorted) {
             const auto& pass = passes_[pi];
-            if (pass.writes.empty()) { prunedSorted.push_back(pi); continue; }
+            if (pass.writes.empty() && pass.bufferWrites.empty()) { prunedSorted.push_back(pi); continue; }
             bool anyWriteRead = false;
             bool writesImported = false;
             for (auto& [h,u] : pass.writes) {
                 if (allReadRes.find(h.id)!=allReadRes.end()) anyWriteRead = true;
                 if (h.isValid() && h.id < resources_.size() && resources_[h.id].type == ResourceType::Imported) writesImported = true;
             }
-            if (anyWriteRead || writesImported) prunedSorted.push_back(pi);
+            bool anyBufWriteRead = false;
+            bool writesBufImported = false;
+            for (auto& [h,u] : pass.bufferWrites) {
+                if (allReadBuf.find(h.id)!=allReadBuf.end()) anyBufWriteRead = true;
+                if (h.isValid() && h.id < bufferResources_.size() && bufferResources_[h.id].type == ResourceType::Imported) writesBufImported = true;
+            }
+            if (anyWriteRead || writesImported || anyBufWriteRead || writesBufImported) prunedSorted.push_back(pi);
         }
         if (prunedSorted.empty() && !sorted.empty()) {
             // if all would be pruned, keep sorted as is (avoid empty graph surprise)
@@ -279,6 +353,7 @@ void RenderGraph::clear() {
     // But to respect "imported persists"? Spec's clear wipes transient state for next frame, not imported? Example re-imports swapchain each frame.
     // So we can clear everything; caller will re-import each frame.
     resources_.clear();
+    bufferResources_.clear();
     passes_.clear();
     sortedPassIndices_.clear();
     // Note: if we kept imported, handles would shift; so clear all is safer for handle validity per frame

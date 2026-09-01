@@ -20,4 +20,19 @@ ResourceHandle RenderGraphBuilder::write(ResourceHandle handle, ResourceUsage us
     return handle;
 }
 
+BufferHandle RenderGraphBuilder::createTransientBuffer(const BufferDesc& desc) {
+    BufferHandle h = graph_.createBuffer(desc);
+    return h;
+}
+
+BufferHandle RenderGraphBuilder::read(BufferHandle handle, BufferUsage usage) {
+    graph_.addBufferRead(passIndex_, handle, usage);
+    return handle;
+}
+
+BufferHandle RenderGraphBuilder::write(BufferHandle handle, BufferUsage usage) {
+    graph_.addBufferWrite(passIndex_, handle, usage);
+    return handle;
+}
+
 } // namespace Engine

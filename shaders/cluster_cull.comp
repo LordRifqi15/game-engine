@@ -1,0 +1,142 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : enable
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct GPULight {
+    vec4 positionRadius;
+    vec4 colorIntensity;
+    vec4 directionAngle;
+    uint type;
+    uint castsShadows;
+    uint shadowMapIndex;
+    float padding;
+};
+
+struct ClusterCell {
+    uint offset;
+    uint count;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer LightBuffer {
+    GPULight lights[];
+};
+
+layout(std430, set = 0, binding = 1) buffer ClusterGridBuffer {
+    ClusterCell clusters[];
+};
+
+layout(std430, set = 0, binding = 2) buffer GlobalIndexList {
+    uint globalIndexCount;
+    uint lightIndices[];
+};
+
+layout(push_constant) uniform PushConstants {
+    mat4 view;
+    mat4 invProj;
+    uvec4 gridDim;       // x: tilesX, y: tilesY, z: slicesZ, w: numLights
+    vec4 screenParams;   // x: screenW, y: screenH, z: zNear, w: zFar
+} params;
+
+shared uint s_ClusterLightCount;
+shared uint s_ClusterLightIndices[128];
+shared uint s_GlobalOffset;
+shared vec3 s_AABBMin;
+shared vec3 s_AABBMax;
+
+void computeClusterAABB(uvec3 clusterIdx, out vec3 minAABB, out vec3 maxAABB) {
+    float zNear = params.screenParams.z;
+    float zFar = params.screenParams.w;
+    float zTileNear = zNear * pow(zFar / zNear, float(clusterIdx.z) / float(params.gridDim.z));
+    float zTileFar  = zNear * pow(zFar / zNear, float(clusterIdx.z + 1) / float(params.gridDim.z));
+
+    vec2 tileSize = vec2(params.screenParams.x / float(params.gridDim.x),
+                         params.screenParams.y / float(params.gridDim.y));
+
+    vec2 screenMin = vec2(clusterIdx.xy) * tileSize;
+    vec2 screenMax = screenMin + tileSize;
+
+    // NDC
+    vec2 ndcMin = screenMin / vec2(params.screenParams.x, params.screenParams.y) * 2.0 - 1.0;
+    vec2 ndcMax = screenMax / vec2(params.screenParams.x, params.screenParams.y) * 2.0 - 1.0;
+
+    // Approximate view space using inverse projection scale if available
+    // For culling we use simple linear mapping: view.xy = ndc.xy * z * scale
+    // Scale derived from projection would be 1/proj[0][0]; use 1.0 if unknown
+    float scaleX = 1.0;
+    float scaleY = 1.0;
+    // Use params.invProj to unproject if needed; simplified
+    vec4 viewMinNear = params.invProj * vec4(ndcMin, 0.0, 1.0);
+    viewMinNear /= viewMinNear.w;
+    vec4 viewMaxFar = params.invProj * vec4(ndcMax, 1.0, 1.0);
+    viewMaxFar /= viewMaxFar.w;
+    // Fallback to simple
+    if (length(viewMinNear.xyz) < 0.001) {
+        viewMinNear = vec4(ndcMin * zTileNear, -zTileNear, 1.0);
+        viewMaxFar = vec4(ndcMax * zTileFar, -zTileFar, 1.0);
+    }
+
+    minAABB = min(viewMinNear.xyz, viewMaxFar.xyz);
+    maxAABB = max(viewMinNear.xyz, viewMaxFar.xyz);
+    // Ensure Z range covers log slices (view Z negative)
+    minAABB.z = -zTileFar;
+    maxAABB.z = -zTileNear;
+    if (minAABB.z > maxAABB.z) { float tmp = minAABB.z; minAABB.z = maxAABB.z; maxAABB.z = tmp; }
+}
+
+bool testSphereAABB(vec3 center, float radius, vec3 minAABB, vec3 maxAABB) {
+    float sqDist = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        float v = center[i];
+        if (v < minAABB[i]) sqDist += (minAABB[i] - v) * (minAABB[i] - v);
+        if (v > maxAABB[i]) sqDist += (v - maxAABB[i]) * (v - maxAABB[i]);
+    }
+    return sqDist <= (radius * radius);
+}
+
+void main() {
+    uint clusterIndex = gl_WorkGroupID.x;
+    if (clusterIndex >= params.gridDim.x * params.gridDim.y * params.gridDim.z) return;
+
+    uvec3 clusterCoord;
+    clusterCoord.z = clusterIndex / (params.gridDim.x * params.gridDim.y);
+    uint rem = clusterIndex % (params.gridDim.x * params.gridDim.y);
+    clusterCoord.y = rem / params.gridDim.x;
+    clusterCoord.x = rem % params.gridDim.x;
+
+    if (gl_LocalInvocationIndex == 0) {
+        s_ClusterLightCount = 0;
+        computeClusterAABB(clusterCoord, s_AABBMin, s_AABBMax);
+    }
+    barrier();
+
+    uint totalLights = params.gridDim.w;
+    for (uint i = gl_LocalInvocationIndex; i < totalLights; i += 64) {
+        GPULight light = lights[i];
+        if (light.type == 0) continue; // Skip Directional
+
+        vec3 lightViewPos = (params.view * vec4(light.positionRadius.xyz, 1.0)).xyz;
+        float radius = light.positionRadius.w;
+
+        if (testSphereAABB(lightViewPos, radius, s_AABBMin, s_AABBMax)) {
+            uint slot = atomicAdd(s_ClusterLightCount, 1);
+            if (slot < 128) {
+                s_ClusterLightIndices[slot] = i;
+            }
+        }
+    }
+    barrier();
+
+    if (gl_LocalInvocationIndex == 0) {
+        uint count = min(s_ClusterLightCount, 128u);
+        s_GlobalOffset = atomicAdd(globalIndexCount, count);
+        clusters[clusterIndex].offset = s_GlobalOffset;
+        clusters[clusterIndex].count = count;
+    }
+    barrier();
+
+    uint count = min(s_ClusterLightCount, 128u);
+    for (uint i = gl_LocalInvocationIndex; i < count; i += 64) {
+        lightIndices[s_GlobalOffset + i] = s_ClusterLightIndices[i];
+    }
+}

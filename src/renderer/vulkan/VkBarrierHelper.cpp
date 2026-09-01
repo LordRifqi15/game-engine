@@ -5,6 +5,26 @@
 
 namespace Engine {
 
+BarrierState getBarrierState(BufferUsage usage) {
+    switch (usage) {
+        case BufferUsage::ComputeRead:
+            return {VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED};
+        case BufferUsage::ComputeWrite:
+            return {VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED};
+        case BufferUsage::FragmentRead:
+            return {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED};
+        case BufferUsage::VertexRead:
+            return {VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED};
+        case BufferUsage::TransferSrc:
+            return {VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED};
+        case BufferUsage::TransferDst:
+            return {VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED};
+        case BufferUsage::None:
+        default:
+            return {VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED};
+    }
+}
+
 BarrierState getBarrierState(ResourceUsage usage) {
     switch (usage) {
         case ResourceUsage::ColorAttachment:
@@ -139,6 +159,33 @@ void RenderGraph::resolveBarriers(uint32_t passIndex, VkCommandBuffer cmdBuffer)
 
     for (const auto& [handle, usage] : pass.reads) checkAndAddBarrier(handle, usage, false);
     for (const auto& [handle, usage] : pass.writes) checkAndAddBarrier(handle, usage, true);
+
+    // Buffer barriers (Clustered)
+    auto checkAndAddBufferBarrier = [&](BufferHandle handle, BufferUsage currentUsage) {
+        if (!handle.isValid() || handle.id >= bufferResources_.size()) return;
+        auto& res = bufferResources_[handle.id];
+        BarrierState srcState = getBarrierState(res.lastUsage);
+        BarrierState dstState = getBarrierState(currentUsage);
+        if (res.lastUsage == currentUsage) return;
+        if (srcState.stageMask == dstState.stageMask && srcState.accessMask == dstState.accessMask) {
+            if (res.lastUsage != BufferUsage::None) return;
+        }
+        if (res.buffer != VK_NULL_HANDLE && cmdBuffer != VK_NULL_HANDLE) {
+            VkBufferMemoryBarrier bbar{};
+            bbar.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            bbar.srcAccessMask = srcState.accessMask;
+            bbar.dstAccessMask = dstState.accessMask;
+            bbar.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            bbar.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            bbar.buffer = res.buffer;
+            bbar.offset = 0;
+            bbar.size = VK_WHOLE_SIZE;
+            vkCmdPipelineBarrier(cmdBuffer, srcState.stageMask, dstState.stageMask, 0, 0, nullptr, 1, &bbar, 0, nullptr);
+        }
+        res.lastUsage = currentUsage;
+    };
+    for (const auto& [handle, usage] : pass.bufferReads) checkAndAddBufferBarrier(handle, usage);
+    for (const auto& [handle, usage] : pass.bufferWrites) checkAndAddBufferBarrier(handle, usage);
 }
 
 

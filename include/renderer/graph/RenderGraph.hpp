@@ -17,11 +17,15 @@ public:
     RenderGraph() = default;
     ~RenderGraph() = default;
 
-    // 1. Setup Phase
+    // 1. Setup Phase - Images
     ResourceHandle importImage(const std::string& name, VkImage image, VkImageView view,
                                 VkFormat format, VkExtent2D extent, ResourceUsage initialUsage);
 
     ResourceHandle createResource(const ImageDesc& desc);
+
+    // 1b. Setup Phase - Buffers
+    BufferHandle importBuffer(const std::string& name, VkBuffer buffer, size_t size, BufferUsage initialUsage);
+    BufferHandle createBuffer(const BufferDesc& desc);
 
     template <typename SetupFunc, typename ExecFunc>
     void addPass(const std::string& name, SetupFunc&& setup, ExecFunc&& execute) {
@@ -47,17 +51,22 @@ public:
     const std::vector<uint32_t>& sortedPassIndices() const { return sortedPassIndices_; }
     const std::vector<RenderPassNode>& passes() const { return passes_; }
     const std::vector<RenderGraphResource>& resources() const { return resources_; }
+    const std::vector<RenderGraphBufferResource>& bufferResources() const { return bufferResources_; }
     size_t passCount() const { return passes_.size(); }
     size_t resourceCount() const { return resources_.size(); }
+    size_t bufferCount() const { return bufferResources_.size(); }
 
     // For builder friend access
     void addRead(uint32_t passIndex, ResourceHandle h, ResourceUsage u);
     void addWrite(uint32_t passIndex, ResourceHandle h, ResourceUsage u);
+    void addBufferRead(uint32_t passIndex, BufferHandle h, BufferUsage u);
+    void addBufferWrite(uint32_t passIndex, BufferHandle h, BufferUsage u);
 
 private:
     void resolveBarriers(uint32_t passIndex, VkCommandBuffer cmdBuffer);
 
     std::vector<RenderGraphResource> resources_;
+    std::vector<RenderGraphBufferResource> bufferResources_;
     std::vector<RenderPassNode> passes_;
     std::vector<uint32_t> sortedPassIndices_;
 

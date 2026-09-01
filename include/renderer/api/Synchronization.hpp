@@ -11,6 +11,7 @@ struct BarrierState {
 };
 
 BarrierState getBarrierState(ResourceUsage usage);
+BarrierState getBarrierState(BufferUsage usage);
 VkImageAspectFlags getAspectMask(VkFormat format, ResourceUsage usage);
 VkImageAspectFlags getAspectMask(const RenderGraphResource& res, ResourceUsage usage);
 

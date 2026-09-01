@@ -1,6 +1,8 @@
 #include "renderer/deferred/DeferredPipeline.hpp"
 #include "renderer/graph/RenderGraphBuilder.hpp"
 #include "renderer/deferred/GBuffer.hpp"
+#include "renderer/lighting/ClusteredLighting.hpp"
+#include "renderer/lighting/LightTypes.hpp"
 #include "core/registry.h"
 
 namespace Engine {
@@ -43,7 +45,41 @@ void DeferredPipeline::buildPipeline(RenderGraph& graph, ::engine::Registry& reg
         [&](VkCommandBuffer cb) { recordGBufferGeometry(cb, registry); }
     );
 
-    // 4. Deferred Lighting Pass
+    // 3b. Clustered Light Buffers (GPU)
+    uint32_t gridX = ClusteredLighting::computeGridX(extent);
+    uint32_t gridY = ClusteredLighting::computeGridY(extent);
+    uint32_t totalClusters = gridX * gridY * ClusteredLighting::CLUSTER_SLICES_Z;
+    auto lightBuffer = graph.createBuffer({
+        .name = "ClusterLights",
+        .size = size_t(ClusteredLighting::MAX_LIGHTS) * sizeof(GPULight),
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+    });
+    auto clusterGridBuffer = graph.createBuffer({
+        .name = "ClusterGrid",
+        .size = size_t(totalClusters) * sizeof(ClusterCell),
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+    });
+    auto clusterIndexBuffer = graph.createBuffer({
+        .name = "ClusterIndices",
+        .size = sizeof(uint32_t) + size_t(totalClusters) * ClusteredLighting::MAX_LIGHTS_PER_CLUSTER * sizeof(uint32_t),
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+    });
+
+    // 3c. Cluster Cull Compute Pass
+    graph.addPass("ClusterCull",
+        [&](RenderGraphBuilder& b) {
+            b.read(lightBuffer, BufferUsage::ComputeRead);
+            b.write(clusterGridBuffer, BufferUsage::ComputeWrite);
+            b.write(clusterIndexBuffer, BufferUsage::ComputeWrite);
+        },
+        [&](VkCommandBuffer cb) {
+            (void)cb;
+            // In real engine: bind pipeline cluster_cull.comp, push constants gridDim, dispatch totalClusters/64
+            // Stub for graph validation: no actual dispatch needed
+        }
+    );
+
+    // 4. Deferred Lighting Pass (now clustered)
     graph.addPass("DeferredLightingPass",
         [&](RenderGraphBuilder& b) {
             b.read(gbuffer.albedoAO, ResourceUsage::ShaderRead);
@@ -51,6 +87,9 @@ void DeferredPipeline::buildPipeline(RenderGraph& graph, ::engine::Registry& reg
             b.read(gbuffer.metallicFlags, ResourceUsage::ShaderRead);
             b.read(gbuffer.depth, ResourceUsage::ShaderRead);
             b.read(shadowMap, ResourceUsage::ShaderRead);
+            b.read(lightBuffer, BufferUsage::FragmentRead);
+            b.read(clusterGridBuffer, BufferUsage::FragmentRead);
+            b.read(clusterIndexBuffer, BufferUsage::FragmentRead);
             b.write(hdrTarget, ResourceUsage::ColorAttachment);
         },
         [&](VkCommandBuffer cb) { recordLightingQuad(cb, registry); }
