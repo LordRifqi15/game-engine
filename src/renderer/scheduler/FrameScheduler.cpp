@@ -331,18 +331,55 @@ void FrameScheduler::partitionDAG(RenderGraph& graph, std::vector<CommandBatch>&
 }
 
 void FrameScheduler::submitBatches(const std::vector<CommandBatch>& batches) {
-    // In real engine, this would do vkQueueSubmit with timeline semaphores for each batch on its queue.
-    // For headless tests, we just validate monotonicity and that waitValues < signalValues where applicable.
-    // No actual submission needed when device is null or queues are null.
     for (const auto& batch : batches) {
-        // Validate timeline monotonicity: signal must be > previous for that queue
-        // Already ensured in partitionDAG by incrementing.
-        // Wait values must be <= signal values of src queues (since wait is on already signaled value)
-        // For test, we just ensure waitValues are not zero when there is a dependency.
-        (void)batch;
-        if (device_ == VK_NULL_HANDLE) continue;
-        // Real submission would use VkTimelineSemaphoreSubmitInfo and VkSubmitInfo
-        // Omitted for brevity in test environment
+        if (device_ == VK_NULL_HANDLE) {
+            // Headless: just validate monotonicity, no actual submit
+            continue;
+        }
+        VkQueue queue = queues_[static_cast<size_t>(batch.queueType)].queue;
+        if (queue == VK_NULL_HANDLE) continue;
+
+        std::vector<VkSemaphoreSubmitInfo> waitInfos;
+        waitInfos.reserve(batch.waitSemaphores.size());
+        for (size_t i = 0; i < batch.waitSemaphores.size(); ++i) {
+            VkSemaphoreSubmitInfo waitInfo{};
+            waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            waitInfo.semaphore = batch.waitSemaphores[i];
+            waitInfo.value = batch.waitValues[i];
+            waitInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            // Use waitStageMasks if provided, but spec uses ALL_COMMANDS
+            if (i < batch.waitStageMasks.size() && batch.waitStageMasks[i] != 0) {
+                // Map old stage to VK_PIPELINE_STAGE_2 equivalent (simplified)
+                waitInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            }
+            waitInfos.push_back(waitInfo);
+        }
+
+        std::vector<VkSemaphoreSubmitInfo> signalInfos;
+        signalInfos.reserve(batch.signalSemaphores.size());
+        for (size_t i = 0; i < batch.signalSemaphores.size(); ++i) {
+            VkSemaphoreSubmitInfo signalInfo{};
+            signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            signalInfo.semaphore = batch.signalSemaphores[i];
+            signalInfo.value = batch.signalValues[i];
+            signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            signalInfos.push_back(signalInfo);
+        }
+
+        VkCommandBufferSubmitInfo cmdBufferInfo{};
+        cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdBufferInfo.commandBuffer = batch.cmdBuffer;
+
+        VkSubmitInfo2 submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
+        submitInfo.pWaitSemaphoreInfos = waitInfos.data();
+        submitInfo.commandBufferInfoCount = 1;
+        submitInfo.pCommandBufferInfos = &cmdBufferInfo;
+        submitInfo.signalSemaphoreInfoCount = static_cast<uint32_t>(signalInfos.size());
+        submitInfo.pSignalSemaphoreInfos = signalInfos.data();
+
+        vkQueueSubmit2(queue, 1, &submitInfo, VK_NULL_HANDLE);
     }
 }
 

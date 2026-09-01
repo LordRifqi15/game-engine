@@ -205,14 +205,19 @@ bool RenderGraph::compile() {
     }
     std::vector<uint32_t> prunedSorted;
     if (hasPresent) {
+        std::unordered_set<uint32_t> neededBufs;
         std::vector<char> live(n, 0);
-        // reverse walk: a pass is live if it writes a needed resource or reads Present
+        // reverse walk: a pass is live if it writes a needed resource (image or buffer) or reads Present
         for (int idx = (int)sorted.size()-1; idx >=0; --idx) {
             uint32_t pi = sorted[idx];
             const auto& pass = passes_[pi];
             bool isLive = false;
-            // check if any write is needed
+            // check if any image write is needed
             for (auto& [h,u] : pass.writes) if (neededRes.find(h.id)!=neededRes.end()) { isLive = true; break; }
+            // check if any buffer write is needed
+            if (!isLive) {
+                for (auto& [h,u] : pass.bufferWrites) if (neededBufs.find(h.id)!=neededBufs.end()) { isLive = true; break; }
+            }
             // Present read makes sink live even without writes
             if (!isLive) {
                 for (auto& [h,u] : pass.reads) if (u==ResourceUsage::Present) { isLive = true; break; }
@@ -220,7 +225,9 @@ bool RenderGraph::compile() {
             if (isLive) {
                 live[pi]=1;
                 for (auto& [h,u] : pass.reads) neededRes.insert(h.id);
-                // also its writes' resources' writer dependencies already handled via needed, but to be safe, writes don't add needed, reads do
+                for (auto& [h,u] : pass.bufferReads) neededBufs.insert(h.id);
+                // Writes don't add needed, reads do (already handled)
+                // But also need to consider that a live pass's buffer reads make those buffers needed
             }
         }
         for (uint32_t pi : sorted) if (live[pi]) prunedSorted.push_back(pi);

@@ -55,6 +55,8 @@ add_executable(engine
     src/platform/window.cpp
     src/platform/input.cpp
     src/renderer/renderer.cpp
+    src/renderer/Renderer.cpp
+    src/renderer/FrameContext.cpp
     src/renderer/deferred/GBuffer.cpp
     src/renderer/deferred/DeferredPipeline.cpp
     src/renderer/lighting/ClusteredLighting.cpp
@@ -71,6 +73,7 @@ add_executable(engine
     src/renderer/vulkan/VkFeatureManager.cpp
     src/renderer/graph/RenderGraph.cpp
     src/renderer/graph/RenderGraphBuilder.cpp
+    src/renderer/graph/RenderGraphValidator.cpp
     src/renderer/graph/RenderGraphResources.cpp
     src/renderer/graph/ResourceLifetime.cpp
     src/renderer/graph/TransientResourcePool.cpp
