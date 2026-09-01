@@ -60,6 +60,8 @@ add_executable(engine
     src/renderer/lighting/ClusteredLighting.cpp
     src/renderer/culling/HiZPyramid.cpp
     src/renderer/culling/GPUCullingSystem.cpp
+    src/renderer/scheduler/TimelineSync.cpp
+    src/renderer/scheduler/FrameScheduler.cpp
     src/renderer/graph/RenderGraph.cpp
     src/renderer/graph/RenderGraphBuilder.cpp
     src/renderer/graph/RenderGraphResources.cpp

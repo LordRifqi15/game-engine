@@ -1,4 +1,5 @@
 #pragma once
+#include "renderer/scheduler/QueueTypes.hpp"
 #include "RenderGraphBuilder.hpp"
 #include "RenderGraphResources.hpp"
 #include "RenderPassNode.hpp"
@@ -29,8 +30,13 @@ public:
 
     template <typename SetupFunc, typename ExecFunc>
     void addPass(const std::string& name, SetupFunc&& setup, ExecFunc&& execute) {
+        addPass(name, QueueType::Graphics, std::forward<SetupFunc>(setup), std::forward<ExecFunc>(execute));
+    }
+
+    template <typename SetupFunc, typename ExecFunc>
+    void addPass(const std::string& name, QueueType queue, SetupFunc&& setup, ExecFunc&& execute) {
         uint32_t passIndex = static_cast<uint32_t>(passes_.size());
-        passes_.push_back(RenderPassNode{.name = name, .passIndex = passIndex});
+        passes_.push_back(RenderPassNode{.name = name, .passIndex = passIndex, .preferredQueue = queue, .actualQueue = queue});
         RenderGraphBuilder builder(*this, passIndex);
         setup(builder);
         passes_[passIndex].executeCallback = std::forward<ExecFunc>(execute);
@@ -50,6 +56,7 @@ public:
     // Accessors for tests / builder
     const std::vector<uint32_t>& sortedPassIndices() const { return sortedPassIndices_; }
     const std::vector<RenderPassNode>& passes() const { return passes_; }
+    std::vector<RenderPassNode>& passes() { return passes_; }
     const std::vector<RenderGraphResource>& resources() const { return resources_; }
     const std::vector<RenderGraphBufferResource>& bufferResources() const { return bufferResources_; }
     size_t passCount() const { return passes_.size(); }
