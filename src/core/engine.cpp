@@ -333,6 +333,8 @@ void Engine::run() {
         if (f2 && !wasF2) gameplayEditorOpen_ = !gameplayEditorOpen_;
         wasF1 = f1; wasF2 = f2;
         renderer_->editorBeginFrame();
+        // Task 041: Scene editor (hierarchy/inspector/menu)
+        sceneEditor_.onImGuiRender(scene_->registry());
         if (editorOpen_ && editor_) {
             // Task 033: editor resolves clip indices against live animations.
             auto* animArr = scene_->registry().tryGetComponentArray<AnimationComponent>();
@@ -425,6 +427,11 @@ void Engine::update(double deltaTime) {
     float dt = static_cast<float>(deltaTime);
     if (dt > 0.1f) dt = 0.1f;
     if (dt <= 0.0f) return;
+
+    // Task 041: pause gameplay/physics/animation when in Edit mode
+    if (!sceneEditor_.getContext().isSimulating()) {
+        return;
+    }
 
     auto* skelArray = scene_->registry().tryGetComponentArray<SkeletonComponent>();
     auto* animArray = scene_->registry().tryGetComponentArray<AnimationComponent>();

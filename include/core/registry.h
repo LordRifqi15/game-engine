@@ -54,6 +54,55 @@ public:
         return arrayFor<T>();
     }
 
+    // EnTT-compatible aliases for SceneEditor
+    Entity create() { return createEntity(); }
+    void destroy(Entity e) { destroyEntity(e); }
+    bool valid(Entity e) const {
+        if (e == kInvalidEntity) return false;
+        auto all = getAllEntities();
+        for (auto ent : all) if (ent == e) return true;
+        return false;
+    }
+    template <typename T>
+    bool all_of(Entity e) const { return hasComponent<T>(e); }
+    template <typename T, typename... Args>
+    T& emplace(Entity e, Args&&... args) {
+        return addComponent<T>(e, T{std::forward<Args>(args)...});
+    }
+    template <typename T>
+    T& get(Entity e) { return getComponent<T>(e); }
+    template <typename T>
+    const T& get(Entity e) const { return getComponent<T>(e); }
+    template <typename T>
+    struct View {
+        Registry* reg = nullptr;
+        struct Iter {
+            ComponentArray<T>* arr = nullptr;
+            size_t idx = 0;
+            Entity operator*() const { return arr ? arr->entityAt(idx) : kInvalidEntity; }
+            bool operator!=(const Iter& o) const { return idx != o.idx; }
+            Iter& operator++() { ++idx; return *this; }
+        };
+        Iter begin() {
+            auto* arr = reg ? reg->template tryGetComponentArray<T>() : nullptr;
+            if (!arr) return {nullptr, 0};
+            return {arr, 0};
+        }
+        Iter end() {
+            auto* arr = reg ? reg->template tryGetComponentArray<T>() : nullptr;
+            if (!arr) return {nullptr, 0};
+            return {arr, arr->size()};
+        }
+        template <typename U>
+        U& get(Entity e) { return reg->template getComponent<U>(e); }
+        template <typename U>
+        const U& get(Entity e) const { return reg->template getComponent<U>(e); }
+    };
+    template <typename T>
+    View<T> view() { return View<T>{this}; }
+    template <typename T>
+    View<T> view() const { return View<T>{const_cast<Registry*>(this)}; }
+
     // Returns nullptr if no entity has this component type yet.
     template <typename T>
     ComponentArray<T>* tryGetComponentArray() {
@@ -136,3 +185,10 @@ private:
 };
 
 } // namespace engine
+
+// EnTT compatibility alias for SceneEditor spec
+namespace entt {
+    using registry = ::engine::Registry;
+    using entity = ::engine::Entity;
+    constexpr ::engine::Entity null = ::engine::kInvalidEntity;
+}

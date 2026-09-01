@@ -49,6 +49,7 @@ add_executable(engine
     src/modules/navigation/Pathfinding.cpp
     src/modules/physics/PhysicsSystem.cpp
     src/editor/anim_graph_editor.cpp
+    src/editor/SceneEditor.cpp
     src/platform/window.cpp
     src/platform/input.cpp
     src/renderer/renderer.cpp

@@ -12,8 +12,9 @@
 #include "modules/navigation/NavGrid.hpp"
 #include "modules/physics/PhysicsSystem.hpp"
 
-#include "editor/anim_graph_editor.h"
+#include "editor/SceneEditor.hpp"
 
+#include "editor/anim_graph_editor.h"
 
 namespace engine {
 
@@ -67,6 +68,8 @@ private:
     PhysicsSystem physicsSystem_;
     // Task 039: navigation grid (XZ plane)
     NavGrid navGrid_{32, 32, 1.0f, glm::vec3(-16.0f, 0.0f, -16.0f)};
+    // Task 041: scene editor + play/pause state
+    ::Engine::SceneEditor sceneEditor_;
 };
 
 
