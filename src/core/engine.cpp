@@ -12,7 +12,11 @@
 #include "ecs/components/BlackboardComponent.hpp"
 #include "ecs/components/PathComponent.hpp"
 #include "ecs/components/TagComponent.hpp"
+#include "ecs/components/TriggerComponent.hpp"
+#include "ecs/components/EventInboxComponent.hpp"
 #include "core/scene/SceneSerializer.hpp"
+#include "modules/interaction/InteractionSystem.hpp"
+#include "modules/interaction/InteractionNodes.hpp"
 #include "modules/ai/GameplayNodesAI.hpp"
 #include "modules/ai/BlackboardNodes.hpp"
 #include "modules/ai/GraphContext.hpp"
@@ -25,14 +29,15 @@
 #include "core/mesh_loader.h"
 #include "platform/input.h"
 #include "platform/window.h"
-#include "renderer/renderer.h"
-#include "core/render_system.h"
 #include <cstdio>
 #include <algorithm>
 #include <cstdlib>
 #include <thread>
-#include <algorithm>
-#include <cstdlib>
+
+#include "renderer/renderer.h"
+#include "core/render_system.h"
+
+extern ::engine::Registry* g_currentRegistryForEmit;
 
 namespace engine {
 
@@ -428,10 +433,17 @@ void Engine::update(double deltaTime) {
     if (dt > 0.1f) dt = 0.1f;
     if (dt <= 0.0f) return;
 
-    // Task 041: pause gameplay/physics/animation when in Edit mode
+    // Task 041/042: pause simulation when in Edit mode (but keep camera)
     if (!sceneEditor_.getContext().isSimulating()) {
+        // Clear any pending events to prevent accumulation while paused
+        auto all = scene_->registry().getAllEntities();
+        for (auto e : all) if (scene_->registry().all_of<EventInboxComponent>(e)) scene_->registry().get<EventInboxComponent>(e).clear();
         return;
     }
+
+    // Task 042: Interaction system must run before gameplay so nodes receive current frame events
+    g_currentRegistryForEmit = &scene_->registry();
+    interactionSystem_.update(scene_->registry());
 
     auto* skelArray = scene_->registry().tryGetComponentArray<SkeletonComponent>();
     auto* animArray = scene_->registry().tryGetComponentArray<AnimationComponent>();
@@ -477,6 +489,7 @@ void Engine::update(double deltaTime) {
                 auto& phys = physArray->get(e);
                 BlackboardComponent* bb = bbArray ? bbArray->tryGet(e) : nullptr;
                 PathComponent* pathComp = pathArray ? pathArray->tryGet(e) : nullptr;
+                EventInboxComponent* inbox = scene_->registry().tryGetComponent<EventInboxComponent>(e);
                 GraphContext ctx{};
                 ctx.selfEntity = static_cast<uint32_t>(e);
                 ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
@@ -486,16 +499,16 @@ void Engine::update(double deltaTime) {
                 ctx.blackboard = bb;
                 ctx.path = pathComp;
                 ctx.navGrid = &navGrid_;
+                ctx.incomingEvents = inbox ? &inbox->incomingEvents : nullptr;
+                ctx.registry = &scene_->registry();
                 ctx.outSelfRotationEuler = &tr.rotation;
                 ctx.dt = dt;
-                // Legacy fallback also set for rotation
-                ctx.outSelfPosition = &tr.position;
-                gComp->graph->execute(ctx, animC.machine->params());
             } else if (e != playerEntity_ && transformArray && transformArray->has(e)) {
                 // Fallback without physics (should not happen, but keep legacy)
                 auto& tr = transformArray->get(e);
                 BlackboardComponent* bb = bbArray ? bbArray->tryGet(e) : nullptr;
                 PathComponent* pathComp = pathArray ? pathArray->tryGet(e) : nullptr;
+                EventInboxComponent* inbox = scene_->registry().tryGetComponent<EventInboxComponent>(e);
                 GraphContext ctx{};
                 ctx.selfEntity = static_cast<uint32_t>(e);
                 ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
@@ -506,14 +519,38 @@ void Engine::update(double deltaTime) {
                 ctx.blackboard = bb;
                 ctx.path = pathComp;
                 ctx.navGrid = &navGrid_;
+                ctx.incomingEvents = inbox ? &inbox->incomingEvents : nullptr;
+                ctx.registry = &scene_->registry();
                 ctx.dt = dt;
                 gComp->graph->execute(ctx, animC.machine->params());
             } else {
-                // Player or no transform: legacy Input-driven
-                gComp->graph->execute(dt, animC.machine->params());
+                // Player or no transform: also provide events via context if available
+                EventInboxComponent* inbox = scene_->registry().tryGetComponent<EventInboxComponent>(e);
+                GraphContext ctx{};
+                ctx.selfEntity = static_cast<uint32_t>(e);
+                ctx.targetEntity = static_cast<uint32_t>(playerEntity_);
+                if (transformArray && transformArray->has(e)) {
+                    ctx.selfPosition = transformArray->get(e).position;
+                    ctx.outSelfPosition = &transformArray->get(e).position;
+                    ctx.outSelfRotationEuler = &transformArray->get(e).rotation;
+                } else {
+                    ctx.selfPosition = playerPos;
+                }
+                ctx.targetPosition = playerPos;
+                ctx.blackboard = bbArray ? bbArray->tryGet(e) : nullptr;
+                ctx.path = pathArray ? pathArray->tryGet(e) : nullptr;
+                ctx.navGrid = &navGrid_;
+                ctx.incomingEvents = inbox ? &inbox->incomingEvents : nullptr;
+                ctx.registry = &scene_->registry();
+                ctx.dt = dt;
+                // Prefer context overload if graph supports it, else fallback
+                if (inbox) gComp->graph->execute(ctx, animC.machine->params());
+                else gComp->graph->execute(dt, animC.machine->params());
             }
         }
     }
+    g_currentRegistryForEmit = nullptr;
+
 
     // 2. Physics simulation (integrates velocity, applies gravity, moves Transform)
     physicsSystem_.update(scene_->registry(), dt);

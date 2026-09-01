@@ -13,6 +13,8 @@
 #include "modules/physics/PhysicsSystem.hpp"
 
 #include "editor/SceneEditor.hpp"
+#include "modules/interaction/InteractionSystem.hpp"
+
 
 #include "editor/anim_graph_editor.h"
 
@@ -70,6 +72,8 @@ private:
     NavGrid navGrid_{32, 32, 1.0f, glm::vec3(-16.0f, 0.0f, -16.0f)};
     // Task 041: scene editor + play/pause state
     ::Engine::SceneEditor sceneEditor_;
+    // Task 042: interaction system (proximity triggers & events)
+    ::Engine::InteractionSystem interactionSystem_;
 };
 
 

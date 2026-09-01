@@ -5,9 +5,12 @@
 #include "ecs/components/BlackboardComponent.hpp"
 #include "ecs/components/PathComponent.hpp"
 #include "modules/navigation/NavGrid.hpp"
+#include "modules/interaction/Event.hpp"
+#include <vector>
 #include <cstdint>
 
 namespace engine {
+class Registry;
 struct GraphContext {
     uint32_t selfEntity{0};
     uint32_t targetEntity{0};
@@ -17,9 +20,10 @@ struct GraphContext {
     BlackboardComponent* blackboard{nullptr};
     PathComponent* path{nullptr};
     const NavGrid* navGrid{nullptr};
+    const std::vector<Event>* incomingEvents{nullptr};
+    Registry* registry{nullptr};
     glm::quat* outSelfRotation{nullptr};
     float dt{0.0f};
-    // Legacy direct position mutation (Task 036) — kept for backward compat
     glm::vec3* outSelfPosition{nullptr};
     glm::vec3* outSelfRotationEuler{nullptr};
 };

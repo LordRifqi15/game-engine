@@ -44,6 +44,8 @@ add_executable(engine
     src/core/scene/SceneSerializer.cpp
     src/modules/ai/GameplayNodesAI.cpp
     src/modules/ai/BlackboardNodes.cpp
+    src/modules/interaction/InteractionNodes.cpp
+    src/modules/interaction/InteractionSystem.cpp
     src/modules/navigation/NavigationNodes.cpp
     src/modules/navigation/NavGrid.cpp
     src/modules/navigation/Pathfinding.cpp
@@ -53,6 +55,15 @@ add_executable(engine
     src/platform/window.cpp
     src/platform/input.cpp
     src/renderer/renderer.cpp
+    src/renderer/deferred/GBuffer.cpp
+    src/renderer/deferred/DeferredPipeline.cpp
+    src/renderer/graph/RenderGraph.cpp
+    src/renderer/graph/RenderGraphBuilder.cpp
+    src/renderer/graph/RenderGraphResources.cpp
+    src/renderer/graph/ResourceLifetime.cpp
+    src/renderer/graph/TransientResourcePool.cpp
+    src/renderer/vulkan/VkBarrierHelper.cpp
+    src/renderer/vulkan/VkDeviceMemoryHelper.cpp
     src/renderer/vulkan/vulkan_instance.cpp
     src/renderer/vulkan/vk_device.cpp
     src/renderer/vulkan/vk_swapchain.cpp
@@ -77,6 +88,10 @@ set(SHADER_SRC
     shaders/skybox.frag
     shaders/cull.comp
     shaders/hiz.comp
+    shaders/gbuffer.vert
+    shaders/gbuffer.frag
+    shaders/deferred_lighting.vert
+    shaders/deferred_lighting.frag
 )
 set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/basic.vert.spv
@@ -88,6 +103,10 @@ set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/skybox.frag.spv
     ${CMAKE_BINARY_DIR}/shaders/cull.comp.spv
     ${CMAKE_BINARY_DIR}/shaders/hiz.comp.spv
+    ${CMAKE_BINARY_DIR}/shaders/gbuffer.vert.spv
+    ${CMAKE_BINARY_DIR}/shaders/gbuffer.frag.spv
+    ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.vert.spv
+    ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.frag.spv
 )
 
 add_custom_command(
@@ -102,6 +121,10 @@ add_custom_command(
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/cull.comp -o ${CMAKE_BINARY_DIR}/shaders/cull.comp.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/prepass.frag -o ${CMAKE_BINARY_DIR}/shaders/prepass.frag.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/hiz.comp -o ${CMAKE_BINARY_DIR}/shaders/hiz.comp.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer.vert -o ${CMAKE_BINARY_DIR}/shaders/gbuffer.vert.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gbuffer.frag -o ${CMAKE_BINARY_DIR}/shaders/gbuffer.frag.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/deferred_lighting.vert -o ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.vert.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/deferred_lighting.frag -o ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.frag.spv
     DEPENDS ${SHADER_SRC}
     COMMENT "Compiling shaders"
 )

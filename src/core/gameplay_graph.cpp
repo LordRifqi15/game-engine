@@ -2,8 +2,8 @@
 
 #include "core/anim_editor.h"
 #include "modules/ai/BlackboardNodes.hpp"
-#include "modules/ai/BlackboardNodes.hpp"
 #include "modules/ai/GameplayNodesAI.hpp"
+#include "modules/interaction/InteractionNodes.hpp"
 #include "modules/navigation/NavigationNodes.hpp"
 #include "platform/input.h"
 
@@ -201,6 +201,23 @@ std::shared_ptr<GameplayGraph> GameplayGraph::clone(AnimParams* newTarget) const
             auto* d = static_cast<StateTimerNode*>(dst);
             if (s->reset) d->reset = remap[s->reset];
             if (s->durationNode) d->durationNode = remap[s->durationNode];
+        } else if (auto* s = dynamic_cast<::Engine::OnEventNode*>(src)) {
+            auto* d = static_cast<::Engine::OnEventNode*>(dst);
+            (void)s; (void)d;
+        } else if (auto* s = dynamic_cast<::Engine::EmitEventNode*>(src)) {
+            auto* d = static_cast<::Engine::EmitEventNode*>(dst);
+            if (s->triggerNode) d->triggerNode = remap[s->triggerNode];
+            if (s->valueNode) d->valueNode = remap[s->valueNode];
+        } else if (auto* s = dynamic_cast<::Engine::ModifyBlackboardOnEventNode*>(src)) {
+            (void)s; (void)dst;
+        } else if (auto* s = dynamic_cast<RequestPathNode*>(src)) {
+            auto* d = static_cast<RequestPathNode*>(dst);
+            if (s->targetPosNode) d->targetPosNode = remap[s->targetPosNode];
+            if (s->triggerNode) d->triggerNode = remap[s->triggerNode];
+        } else if (auto* s = dynamic_cast<FollowPathNode*>(src)) {
+            auto* d = static_cast<FollowPathNode*>(dst);
+            if (s->speedNode) d->speedNode = remap[s->speedNode];
+            if (s->enabledNode) d->enabledNode = remap[s->enabledNode];
         }
     }
     return g;
@@ -440,8 +457,28 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
             s->speedValue = n.value != 0.0f ? n.value : 2.0f;
             s->acceptanceRadius = 0.3f;
             node = s;
+        } else if (n.type == "OnEvent" || n.type == "OnTrigger") {
+            auto* on = g->addNode<::Engine::OnEventNode>();
+            on->eventName = n.name.empty() ? n.targetParam : n.name;
+            if (on->eventName.empty()) on->eventName = "OnEnter";
+            node = on;
+        } else if (n.type == "EmitEvent") {
+            auto* e = g->addNode<::Engine::EmitEventNode>();
+            e->eventName = n.targetParam.empty() ? n.name : n.targetParam;
+            if (e->eventName.empty()) e->eventName = "Attack";
+            e->value = n.value;
+            // n.op could encode target mode: Self/Target/Instigator
+            if (n.op == "Self") e->targetMode = ::Engine::EmitTargetMode::Self;
+            else if (n.op == "Instigator") e->targetMode = ::Engine::EmitTargetMode::Instigator;
+            else e->targetMode = ::Engine::EmitTargetMode::Target;
+            node = e;
+        } else if (n.type == "ModifyBlackboardOnEvent") {
+            auto* m = g->addNode<::Engine::ModifyBlackboardOnEventNode>();
+            m->eventName = n.name;
+            m->targetBlackboardKey = n.targetParam;
+            m->deltaValue = n.value;
+            node = m;
         }
-    }
     for (auto& l : ed.links) {
         auto itTo = map.find(l.toNode);
         auto itFrom = map.find(l.fromNode);
@@ -470,6 +507,15 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
         } else if (auto* imp = dynamic_cast<ApplyImpulseNode*>(to)) {
             if (l.toSlot == 0) imp->impulseNode = from;
             else if (l.toSlot == 1) imp->trigger = from;
+        } else if (auto* s = dynamic_cast<RequestPathNode*>(to)) {
+            if (l.toSlot == 0) s->targetPosNode = from;
+            else if (l.toSlot == 1) s->triggerNode = from;
+        } else if (auto* s = dynamic_cast<FollowPathNode*>(to)) {
+            if (l.toSlot == 0) s->speedNode = from;
+            else if (l.toSlot == 1) s->enabledNode = from;
+        } else if (auto* e = dynamic_cast<::Engine::EmitEventNode*>(to)) {
+            if (l.toSlot == 0) e->triggerNode = from;
+            else if (l.toSlot == 1) e->valueNode = from;
         } else if (auto* s = dynamic_cast<SetBlackboardVec3Node*>(to)) {
             if (l.toSlot == 0) s->value = from;
             else if (l.toSlot == 1) s->condition = from;
@@ -482,16 +528,12 @@ std::shared_ptr<GameplayGraph> buildGameplayGraph(const EditorGraph& ed, AnimPar
         } else if (auto* s = dynamic_cast<StateTimerNode*>(to)) {
             if (l.toSlot == 0) s->reset = from;
             else if (l.toSlot == 1) s->durationNode = from;
-        } else if (auto* s = dynamic_cast<RequestPathNode*>(to)) {
-            if (l.toSlot == 0) s->targetPosNode = from;
-            else if (l.toSlot == 1) s->triggerNode = from;
-        } else if (auto* s = dynamic_cast<FollowPathNode*>(to)) {
-            if (l.toSlot == 0) s->speedNode = from;
-            else if (l.toSlot == 1) s->enabledNode = from;
         }
     }
     g->setTarget(target);
     return g;
+}
+
 }
 
 EditorGraph makeGameplayEditorGraph() {
