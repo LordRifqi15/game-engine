@@ -30,7 +30,8 @@ enum class BufferUsage {
     VertexRead,
     TransferSrc,
     TransferDst,
-    IndirectBuffer
+    IndirectBuffer,
+    IndexBuffer
 };
 
 struct BufferHandle {
