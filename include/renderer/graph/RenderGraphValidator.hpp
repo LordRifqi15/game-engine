@@ -17,5 +17,5 @@ public:
 } // namespace Engine
 
 namespace engine {
-    using RenderGraphValidator = Engine::RenderGraphValidator;
+    using RenderGraphValidator = ::Engine::RenderGraphValidator;
 }

@@ -47,7 +47,7 @@ static_assert(sizeof(GPUMeshInstance) == 80, "GPUMeshInstance must be 80 bytes (
 } // namespace Engine
 
 namespace engine {
-    using GPUMeshlet = Engine::GPUMeshlet;
-    using GPUMeshInstance = Engine::GPUMeshInstance;
-    using MeshletCullUniforms = Engine::MeshletCullUniforms;
+    using GPUMeshlet = ::Engine::GPUMeshlet;
+    using GPUMeshInstance = ::Engine::GPUMeshInstance;
+    using MeshletCullUniforms = ::Engine::MeshletCullUniforms;
 }

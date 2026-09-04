@@ -42,7 +42,7 @@ static_assert(sizeof(PageStreamingUniforms) == 16, "PageStreamingUniforms 16");
 } // namespace Engine
 
 namespace engine {
-    using VirtualPageEntry = Engine::VirtualPageEntry;
-    using GPUPageRequestQueue = Engine::GPUPageRequestQueue;
-    using PageStreamingUniforms = Engine::PageStreamingUniforms;
+    using VirtualPageEntry = ::Engine::VirtualPageEntry;
+    using GPUPageRequestQueue = ::Engine::GPUPageRequestQueue;
+    using PageStreamingUniforms = ::Engine::PageStreamingUniforms;
 }

@@ -46,7 +46,7 @@ struct AABBComponent {
 } // namespace Engine
 
 namespace engine {
-    using BoundsComponent = Engine::BoundsComponent;
-    using BoundingSphereComponent = Engine::BoundingSphereComponent;
-    using AABBComponent = Engine::AABBComponent;
+    using BoundsComponent = ::Engine::BoundsComponent;
+    using BoundingSphereComponent = ::Engine::BoundingSphereComponent;
+    using AABBComponent = ::Engine::AABBComponent;
 }

@@ -55,13 +55,24 @@ public:
     uint32_t swapchainWidth() const { return swapchain_->width(); }
     uint32_t swapchainHeight() const { return swapchain_->height(); }
 
+    VkDevice deviceHandle() const;
+    VkInstance instanceHandle() const;
+    VkPhysicalDevice physicalDeviceHandle() const;
+    VkQueue graphicsQueueHandle() const;
+    VkQueue presentQueueHandle() const;
+    uint32_t graphicsFamilyIndex() const;
+    VkSwapchainKHR swapchainHandle() const;
+    const std::vector<VkImage>& swapchainImages() const;
+    const std::vector<VkImageView>& swapchainImageViews() const;
+    VkFormat swapchainFormat() const;
+    VkExtent2D swapchainExtent() const;
+    void recreateSwapchain();
 
     const Texture* loadTexture(const std::string& path) { return textureCache_->load(path); }
     TextureCache& textureCache() { return *textureCache_; }
-
-    // Depth readback for CPU Hi-Z occlusion (call after drawFrame).
     void requestDepthReadback() { swapchain_->requestDepthReadback(); }
     const std::vector<float>& depthPixels() const { return swapchain_->depthPixels(); }
+
 
 private:
     Window& window_;

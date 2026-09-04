@@ -85,13 +85,13 @@ struct RenderGraphResource {
 } // namespace Engine
 
 namespace engine {
-    using ResourceType = Engine::ResourceType;
-    using ResourceUsage = Engine::ResourceUsage;
-    using BufferUsage = Engine::BufferUsage;
-    using ResourceHandle = Engine::ResourceHandle;
-    using BufferHandle = Engine::BufferHandle;
-    using ImageDesc = Engine::ImageDesc;
-    using BufferDesc = Engine::BufferDesc;
-    using RenderGraphResource = Engine::RenderGraphResource;
-    using RenderGraphBufferResource = Engine::RenderGraphBufferResource;
+    using ResourceType = ::Engine::ResourceType;
+    using ResourceUsage = ::Engine::ResourceUsage;
+    using BufferUsage = ::Engine::BufferUsage;
+    using ResourceHandle = ::Engine::ResourceHandle;
+    using BufferHandle = ::Engine::BufferHandle;
+    using ImageDesc = ::Engine::ImageDesc;
+    using BufferDesc = ::Engine::BufferDesc;
+    using RenderGraphResource = ::Engine::RenderGraphResource;
+    using RenderGraphBufferResource = ::Engine::RenderGraphBufferResource;
 }

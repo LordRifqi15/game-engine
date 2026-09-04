@@ -41,5 +41,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using ClusteredLighting = Engine::ClusteredLighting;
+    using ClusteredLighting = ::Engine::ClusteredLighting;
 }

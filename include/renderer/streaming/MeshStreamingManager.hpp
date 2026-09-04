@@ -51,5 +51,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using MeshStreamingManager = Engine::MeshStreamingManager;
+    using MeshStreamingManager = ::Engine::MeshStreamingManager;
 }

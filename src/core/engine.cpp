@@ -1,4 +1,5 @@
 #include "core/engine.h"
+#include "renderer/Renderer.hpp"
 
 #include "core/anim_graph.h"
 #include "core/anim_graph_asset.h"
@@ -40,11 +41,54 @@
 extern ::engine::Registry* g_currentRegistryForEmit;
 
 namespace engine {
+static ::Engine::RendererBackendMode rendererBackendModeFromEnvironment() {
+    const char* value = std::getenv("ENGINE_RENDERER");
+    if (value && std::string(value) == "legacy") {
+        return ::Engine::RendererBackendMode::Legacy;
+    }
+    return ::Engine::RendererBackendMode::RenderGraph;
+}
+
+static bool useRenderGraphRenderer(const ::Engine::RendererBackendMode mode,
+                                   const std::unique_ptr<::Engine::Renderer>& renderer) {
+    return mode == ::Engine::RendererBackendMode::RenderGraph && renderer != nullptr;
+}
 
 Engine::Engine(Window& window)
     : window_(window) {
     renderer_ = new Renderer(window_);
-    renderer_->enableEditorOverlay(window_);
+    rendererBackendMode_ = rendererBackendModeFromEnvironment();
+    if (rendererBackendMode_ == ::Engine::RendererBackendMode::RenderGraph) {
+        const RuntimeRendererInfo legacy = renderer_->runtimeInfo();
+        ::Engine::RuntimeRendererConfig config;
+        config.instance = legacy.instance;
+        config.device = legacy.device;
+        config.physicalDevice = legacy.physicalDevice;
+        config.graphicsQueue = legacy.graphicsQueue;
+        config.computeQueue = legacy.graphicsQueue;
+        config.transferQueue = legacy.graphicsQueue;
+        config.queueIndices.graphicsFamily = legacy.graphicsFamily;
+        config.queueIndices.computeFamily = legacy.graphicsFamily;
+        config.queueIndices.transferFamily = legacy.graphicsFamily;
+        config.swapchain.handle = legacy.swapchain;
+        config.swapchain.presentQueue = legacy.presentQueue;
+        config.swapchain.images = legacy.swapchainImages;
+        config.swapchain.imageViews = legacy.swapchainImageViews;
+        config.swapchain.format = legacy.swapchainFormat;
+        config.swapchain.extent = legacy.swapchainExtent;
+        renderGraphRenderer_ = std::make_unique<::Engine::Renderer>();
+        renderGraphRenderer_->init(config);
+        renderGraphRenderer_->initEditorOverlay(window_.handle(), legacy.swapchainFormat);
+        if (!renderGraphRenderer_->editorReady()) {
+            // Overlay owns the single GLFW backend init; without it the UI has
+            // no context, so fall back to the fully legacy path.
+            renderGraphRenderer_.reset();
+            rendererBackendMode_ = ::Engine::RendererBackendMode::Legacy;
+        }
+    }
+    if (rendererBackendMode_ == ::Engine::RendererBackendMode::Legacy) {
+        renderer_->enableEditorOverlay(window_);
+    }
     scene_ = new Scene();
 
     triangleMesh_ = new Mesh(mesh_primitives::quad());
@@ -315,6 +359,9 @@ void Engine::spawnFallbackScene() {
 }
 
 Engine::~Engine() {
+    // Borrower first: modern renderer must release its fences, pools, and UI
+    // context while the legacy-owned VkDevice is still alive.
+    renderGraphRenderer_.reset();
     jobs_.shutdown();
     gltfMeshes_.clear();
     delete cubeMesh_;
@@ -337,8 +384,10 @@ void Engine::run() {
         if (f1 && !wasF1) editorOpen_ = !editorOpen_;
         if (f2 && !wasF2) gameplayEditorOpen_ = !gameplayEditorOpen_;
         wasF1 = f1; wasF2 = f2;
-        renderer_->editorBeginFrame();
-        // Task 041: Scene editor (hierarchy/inspector/menu)
+        const bool modernUI = useRenderGraphRenderer(rendererBackendMode_, renderGraphRenderer_) &&
+                              renderGraphRenderer_->editorReady();
+        if (modernUI) renderGraphRenderer_->editorBegin();
+        else renderer_->editorBeginFrame();
         sceneEditor_.onImGuiRender(scene_->registry());
         if (editorOpen_ && editor_) {
             // Task 033: editor resolves clip indices against live animations.
@@ -403,15 +452,39 @@ void Engine::run() {
                 ImGui::End();
             }
         }
-        renderer_->editorEndFrame();
+        if (modernUI) renderGraphRenderer_->editorEnd();
+        else renderer_->editorEndFrame();
 
 
         update(time_.deltaTime());
         world_->update(scene_->camera().position);
 
-        renderSystem.beginFrame(scene_->camera(), scene_->light());
-        renderSystem.update(scene_->registry());
-        renderSystem.endFrame();
+        if (rendererBackendMode_ == ::Engine::RendererBackendMode::RenderGraph &&
+            renderGraphRenderer_) {
+            // Task 052: authoritative path. Simulation -> extraction -> graph.
+            ::Engine::FrameContext ctx;
+            if (renderGraphRenderer_->beginFrame(
+                    ctx, static_cast<float>(time_.deltaTime()))) {
+                renderSystem.extractGPUScene(scene_->registry(), scene_->camera(), ctx);
+                renderGraphRenderer_->renderFrame(ctx);
+                renderGraphRenderer_->endFrame(ctx);
+            } else if (renderGraphRenderer_->framebufferResized()) {
+                renderer_->recreateSwapchain();
+                const RuntimeRendererInfo info = renderer_->runtimeInfo();
+                ::Engine::RuntimeSwapchainState swapchain;
+                swapchain.handle = info.swapchain;
+                swapchain.presentQueue = info.presentQueue;
+                swapchain.images = info.swapchainImages;
+                swapchain.imageViews = info.swapchainImageViews;
+                swapchain.format = info.swapchainFormat;
+                swapchain.extent = info.swapchainExtent;
+                renderGraphRenderer_->updateSwapchain(swapchain);
+            }
+        } else {
+            renderSystem.beginFrame(scene_->camera(), scene_->light());
+            renderSystem.update(scene_->registry());
+            renderSystem.endFrame();
+        }
 
         if (debugTiming_ && time_.fps() > 0.0) {
             static double lastLoggedFps = -1.0;

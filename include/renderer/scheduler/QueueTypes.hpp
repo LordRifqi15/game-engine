@@ -30,6 +30,7 @@ struct QueueContext {
     uint32_t familyIndex{UINT32_MAX};
     VkSemaphore timelineSemaphore{VK_NULL_HANDLE};
     uint64_t currentTimelineValue{0};
+    std::vector<VkCommandPool> commandPools;
 };
 
 struct CrossQueueSync {
@@ -42,8 +43,8 @@ struct CrossQueueSync {
 } // namespace Engine
 
 namespace engine {
-    using QueueType = Engine::QueueType;
-    using QueueFamilyIndices = Engine::QueueFamilyIndices;
-    using QueueContext = Engine::QueueContext;
-    using CrossQueueSync = Engine::CrossQueueSync;
+    using QueueType = ::Engine::QueueType;
+    using QueueFamilyIndices = ::Engine::QueueFamilyIndices;
+    using QueueContext = ::Engine::QueueContext;
+    using CrossQueueSync = ::Engine::CrossQueueSync;
 }

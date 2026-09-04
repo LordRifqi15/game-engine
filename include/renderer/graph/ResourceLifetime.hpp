@@ -22,5 +22,5 @@ struct ResourceLifetime {
 } // namespace Engine
 
 namespace engine {
-    using ResourceLifetime = Engine::ResourceLifetime;
+    using ResourceLifetime = ::Engine::ResourceLifetime;
 }

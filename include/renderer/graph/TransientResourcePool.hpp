@@ -45,5 +45,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using TransientResourcePool = Engine::TransientResourcePool;
+    using TransientResourcePool = ::Engine::TransientResourcePool;
 }

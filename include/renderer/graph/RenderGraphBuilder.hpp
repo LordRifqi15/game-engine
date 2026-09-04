@@ -28,5 +28,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using RenderGraphBuilder = Engine::RenderGraphBuilder;
+    using RenderGraphBuilder = ::Engine::RenderGraphBuilder;
 }

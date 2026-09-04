@@ -8,7 +8,7 @@
 namespace Engine {
 
 struct CommandBatch {
-    QueueType queueType;
+    QueueType queueType{QueueType::Graphics};
     VkCommandBuffer cmdBuffer{VK_NULL_HANDLE};
     std::vector<uint32_t> passIndices;
     
@@ -24,14 +24,26 @@ struct CommandBatch {
 
 class FrameScheduler {
 public:
-    FrameScheduler(VkDevice device, const QueueFamilyIndices& indices);
+    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+
+    FrameScheduler(VkDevice device, const QueueFamilyIndices& indices,
+                   VkQueue graphicsQueue = VK_NULL_HANDLE,
+                   VkQueue computeQueue = VK_NULL_HANDLE,
+                   VkQueue transferQueue = VK_NULL_HANDLE);
     ~FrameScheduler();
 
     // Non-copyable
     FrameScheduler(const FrameScheduler&) = delete;
     FrameScheduler& operator=(const FrameScheduler&) = delete;
 
-    void scheduleAndExecute(RenderGraph& graph, uint64_t frameIndex);
+    void resetFrame(uint32_t frameSlot);
+    VkCommandBuffer allocateCommandBuffer(uint32_t frameSlot, QueueType queueType);
+
+    void scheduleAndExecute(RenderGraph& graph, uint64_t frameIndex,
+                            uint32_t frameSlot = 0,
+                            VkSemaphore acquireSemaphore = VK_NULL_HANDLE,
+                            VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE,
+                            VkFence completionFence = VK_NULL_HANDLE);
 
     // Exposed for tests: partition sorted DAG into batches
     void partitionDAG(RenderGraph& graph, std::vector<CommandBatch>& outBatches);
@@ -61,19 +73,24 @@ public:
         BufferUsage dstUsage);
 
 private:
-    void submitBatches(const std::vector<CommandBatch>& batches);
+    void submitBatches(const std::vector<CommandBatch>& batches,
+                       VkFence completionFence);
     void createTimelineSemaphores();
     void destroyTimelineSemaphores();
+    void createCommandPools();
+    void destroyCommandPools();
     uint32_t familyForQueue(QueueType t) const;
 
     VkDevice device_{VK_NULL_HANDLE};
     QueueFamilyIndices indices_{};
     QueueContext queues_[static_cast<size_t>(QueueType::Count)];
+    uint32_t activeFrameSlot_{0};
 };
+
 
 } // namespace Engine
 
 namespace engine {
-    using FrameScheduler = Engine::FrameScheduler;
-    using CommandBatch = Engine::CommandBatch;
+    using FrameScheduler = ::Engine::FrameScheduler;
+    using CommandBatch = ::Engine::CommandBatch;
 }

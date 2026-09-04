@@ -38,7 +38,7 @@ struct alignas(16) CullingUniforms {
 } // namespace Engine
 
 namespace engine {
-    using GPUInstanceData = Engine::GPUInstanceData;
-    using GPUIndirectCommand = Engine::GPUIndirectCommand;
-    using CullingUniforms = Engine::CullingUniforms;
+    using GPUInstanceData = ::Engine::GPUInstanceData;
+    using GPUIndirectCommand = ::Engine::GPUIndirectCommand;
+    using CullingUniforms = ::Engine::CullingUniforms;
 }

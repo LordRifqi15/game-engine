@@ -24,5 +24,5 @@ struct RenderPassNode {
 } // namespace Engine
 
 namespace engine {
-    using RenderPassNode = Engine::RenderPassNode;
+    using RenderPassNode = ::Engine::RenderPassNode;
 }

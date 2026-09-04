@@ -31,7 +31,7 @@ struct LightComponent {
 } // namespace Engine
 
 namespace engine {
-    using DirectionalLightComponent = Engine::DirectionalLightComponent;
-    using PointLightComponent = Engine::PointLightComponent;
-    using LightComponent = Engine::LightComponent;
+    using DirectionalLightComponent = ::Engine::DirectionalLightComponent;
+    using PointLightComponent = ::Engine::PointLightComponent;
+    using LightComponent = ::Engine::LightComponent;
 }

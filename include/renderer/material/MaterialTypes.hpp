@@ -32,6 +32,6 @@ static_assert(alignof(GPUMaterial) == 16, "GPUMaterial align 16");
 } // namespace Engine
 
 namespace engine {
-    using SamplerType = Engine::SamplerType;
-    using GPUMaterial = Engine::GPUMaterial;
+    using SamplerType = ::Engine::SamplerType;
+    using GPUMaterial = ::Engine::GPUMaterial;
 }

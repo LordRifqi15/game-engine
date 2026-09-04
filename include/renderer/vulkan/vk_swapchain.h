@@ -32,6 +32,9 @@ public:
     // Backend accessors for sibling classes (same module, allowed).
     VkFormat format() const { return format_; }
     VkExtent2D extent() const { return extent_; }
+    VkSwapchainKHR handle() const { return swapchain_; }
+    const std::vector<VkImage>& images() const { return images_; }
+    const std::vector<VkImageView>& views() const { return views_; }
     VkRenderPass renderPass() const { return renderPass_; }
     VkFramebuffer framebuffer(uint32_t index) const { return framebuffers_[index]; }
     void requestDepthReadback();

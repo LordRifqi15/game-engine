@@ -3,21 +3,29 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 
 namespace Engine {
 
-FrameScheduler::FrameScheduler(VkDevice device, const QueueFamilyIndices& indices)
+FrameScheduler::FrameScheduler(VkDevice device, const QueueFamilyIndices& indices,
+                               VkQueue graphicsQueue, VkQueue computeQueue, VkQueue transferQueue)
     : device_(device), indices_(indices) {
-    // Initialize queue contexts with family indices
+    queues_[static_cast<size_t>(QueueType::Graphics)].queue = graphicsQueue;
+    queues_[static_cast<size_t>(QueueType::AsyncCompute)].queue = computeQueue ? computeQueue : graphicsQueue;
+    queues_[static_cast<size_t>(QueueType::Transfer)].queue = transferQueue ? transferQueue : graphicsQueue;
     queues_[static_cast<size_t>(QueueType::Graphics)].familyIndex = indices.graphicsFamily;
-    queues_[static_cast<size_t>(QueueType::AsyncCompute)].familyIndex = indices.hasDedicatedCompute() ? indices.computeFamily : indices.graphicsFamily;
-    queues_[static_cast<size_t>(QueueType::Transfer)].familyIndex = indices.hasDedicatedTransfer() ? indices.transferFamily : indices.graphicsFamily;
+    queues_[static_cast<size_t>(QueueType::AsyncCompute)].familyIndex =
+        indices.hasDedicatedCompute() ? indices.computeFamily : indices.graphicsFamily;
+    queues_[static_cast<size_t>(QueueType::Transfer)].familyIndex =
+        indices.hasDedicatedTransfer() ? indices.transferFamily : indices.graphicsFamily;
 
-    // For headless tests, queues remain VK_NULL_HANDLE but family indices are set
     createTimelineSemaphores();
+    createCommandPools();
 }
 
 FrameScheduler::~FrameScheduler() {
+    destroyCommandPools();
     destroyTimelineSemaphores();
 }
 
@@ -37,6 +45,62 @@ void FrameScheduler::destroyTimelineSemaphores() {
             queues_[i].timelineSemaphore = VK_NULL_HANDLE;
         }
     }
+}
+
+void FrameScheduler::createCommandPools() {
+    if (device_ == VK_NULL_HANDLE) return;
+    for (auto& queue : queues_) {
+        if (queue.familyIndex == UINT32_MAX) continue;
+        queue.commandPools.resize(MAX_FRAMES_IN_FLIGHT, VK_NULL_HANDLE);
+        VkCommandPoolCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        info.queueFamilyIndex = queue.familyIndex;
+        for (auto& pool : queue.commandPools) {
+            if (vkCreateCommandPool(device_, &info, nullptr, &pool) != VK_SUCCESS) {
+                pool = VK_NULL_HANDLE;
+            }
+        }
+    }
+}
+
+void FrameScheduler::destroyCommandPools() {
+    if (device_ == VK_NULL_HANDLE) return;
+    for (auto& queue : queues_) {
+        for (auto pool : queue.commandPools) {
+            if (pool != VK_NULL_HANDLE) vkDestroyCommandPool(device_, pool, nullptr);
+        }
+        queue.commandPools.clear();
+    }
+}
+
+void FrameScheduler::resetFrame(uint32_t frameSlot) {
+    if (device_ == VK_NULL_HANDLE || frameSlot >= MAX_FRAMES_IN_FLIGHT) return;
+    for (auto& queue : queues_) {
+        if (frameSlot < queue.commandPools.size() && queue.commandPools[frameSlot] != VK_NULL_HANDLE) {
+            vkResetCommandPool(device_, queue.commandPools[frameSlot], 0);
+        }
+    }
+}
+
+VkCommandBuffer FrameScheduler::allocateCommandBuffer(uint32_t frameSlot, QueueType queueType) {
+    if (device_ == VK_NULL_HANDLE) {
+        static uint64_t nextCmdId = 0x2000;
+        return reinterpret_cast<VkCommandBuffer>(++nextCmdId);
+    }
+    if (frameSlot >= MAX_FRAMES_IN_FLIGHT) return VK_NULL_HANDLE;
+    auto& queue = queues_[static_cast<size_t>(queueType)];
+    if (frameSlot >= queue.commandPools.size() || queue.commandPools[frameSlot] == VK_NULL_HANDLE) {
+        return VK_NULL_HANDLE;
+    }
+    VkCommandBufferAllocateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    info.commandPool = queue.commandPools[frameSlot];
+    info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    info.commandBufferCount = 1;
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    return vkAllocateCommandBuffers(device_, &info, &commandBuffer) == VK_SUCCESS
+        ? commandBuffer : VK_NULL_HANDLE;
 }
 
 uint32_t FrameScheduler::familyForQueue(QueueType t) const {
@@ -167,11 +231,10 @@ void FrameScheduler::partitionDAG(RenderGraph& graph, std::vector<CommandBatch>&
     bool hasCurrent = false;
 
     // Helper to finalize current batch
+    // Helper to finalize current batch
     auto flushBatch = [&]() {
         if (hasCurrent && !currentBatch.passIndices.empty()) {
-            // Assign dummy cmdBuffer handle (unique per batch)
-            static uint64_t nextCmdId = 0x2000;
-            currentBatch.cmdBuffer = reinterpret_cast<VkCommandBuffer>(++nextCmdId);
+            currentBatch.cmdBuffer = allocateCommandBuffer(activeFrameSlot_, currentBatch.queueType);
             outBatches.push_back(std::move(currentBatch));
             currentBatch = CommandBatch{};
             hasCurrent = false;
@@ -330,14 +393,18 @@ void FrameScheduler::partitionDAG(RenderGraph& graph, std::vector<CommandBatch>&
     }
 }
 
-void FrameScheduler::submitBatches(const std::vector<CommandBatch>& batches) {
-    for (const auto& batch : batches) {
-        if (device_ == VK_NULL_HANDLE) {
-            // Headless: just validate monotonicity, no actual submit
-            continue;
-        }
+void FrameScheduler::submitBatches(const std::vector<CommandBatch>& batches,
+                                    VkFence completionFence) {
+    for (size_t batchIndex = 0; batchIndex < batches.size(); ++batchIndex) {
+        const auto& batch = batches[batchIndex];
+        if (device_ == VK_NULL_HANDLE) continue;
         VkQueue queue = queues_[static_cast<size_t>(batch.queueType)].queue;
-        if (queue == VK_NULL_HANDLE) continue;
+        if ((queue == VK_NULL_HANDLE || batch.cmdBuffer == VK_NULL_HANDLE) &&
+            std::getenv("ENGINE_GRAPH_DEBUG")) {
+            std::fprintf(stderr, "[scheduler] batch %zu skipped (queue %p cmd %p)\n",
+                         batchIndex, (void*)queue, (void*)batch.cmdBuffer);
+        }
+        if (queue == VK_NULL_HANDLE || batch.cmdBuffer == VK_NULL_HANDLE) continue;
 
         std::vector<VkSemaphoreSubmitInfo> waitInfos;
         waitInfos.reserve(batch.waitSemaphores.size());
@@ -345,12 +412,11 @@ void FrameScheduler::submitBatches(const std::vector<CommandBatch>& batches) {
             VkSemaphoreSubmitInfo waitInfo{};
             waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
             waitInfo.semaphore = batch.waitSemaphores[i];
-            waitInfo.value = batch.waitValues[i];
+            waitInfo.value = i < batch.waitValues.size() ? batch.waitValues[i] : 0;
             waitInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-            // Use waitStageMasks if provided, but spec uses ALL_COMMANDS
-            if (i < batch.waitStageMasks.size() && batch.waitStageMasks[i] != 0) {
-                // Map old stage to VK_PIPELINE_STAGE_2 equivalent (simplified)
-                waitInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            if (i < batch.waitStageMasks.size() &&
+                batch.waitStageMasks[i] == VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT) {
+                waitInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
             }
             waitInfos.push_back(waitInfo);
         }
@@ -361,40 +427,91 @@ void FrameScheduler::submitBatches(const std::vector<CommandBatch>& batches) {
             VkSemaphoreSubmitInfo signalInfo{};
             signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
             signalInfo.semaphore = batch.signalSemaphores[i];
-            signalInfo.value = batch.signalValues[i];
+            signalInfo.value = i < batch.signalValues.size() ? batch.signalValues[i] : 0;
             signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
             signalInfos.push_back(signalInfo);
         }
 
-        VkCommandBufferSubmitInfo cmdBufferInfo{};
-        cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-        cmdBufferInfo.commandBuffer = batch.cmdBuffer;
+        VkCommandBufferSubmitInfo commandInfo{};
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        commandInfo.commandBuffer = batch.cmdBuffer;
 
         VkSubmitInfo2 submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
         submitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
         submitInfo.pWaitSemaphoreInfos = waitInfos.data();
         submitInfo.commandBufferInfoCount = 1;
-        submitInfo.pCommandBufferInfos = &cmdBufferInfo;
+        submitInfo.pCommandBufferInfos = &commandInfo;
         submitInfo.signalSemaphoreInfoCount = static_cast<uint32_t>(signalInfos.size());
         submitInfo.pSignalSemaphoreInfos = signalInfos.data();
 
-        vkQueueSubmit2(queue, 1, &submitInfo, VK_NULL_HANDLE);
+        VkFence fence = batchIndex + 1 == batches.size() ? completionFence : VK_NULL_HANDLE;
+        VkResult submitResult = vkQueueSubmit2(queue, 1, &submitInfo, fence);
+        if (std::getenv("ENGINE_GRAPH_DEBUG")) {
+            std::fprintf(stderr, "[scheduler] batch %zu queue %d waits %u signals %u submit %d\n",
+                         batchIndex, static_cast<int>(batch.queueType),
+                         submitInfo.waitSemaphoreInfoCount,
+                         submitInfo.signalSemaphoreInfoCount, static_cast<int>(submitResult));
+        }
+        if (submitResult != VK_SUCCESS) {
+            return;
+        }
     }
 }
 
-void FrameScheduler::scheduleAndExecute(RenderGraph& graph, uint64_t frameIndex) {
-    (void)frameIndex;
-    // Ensure graph is compiled (DAG sorted)
-    if (graph.sortedPassIndices().empty()) {
-        if (!graph.compile()) return;
-    }
+void FrameScheduler::scheduleAndExecute(RenderGraph& graph, uint64_t frameIndex,
+                                        uint32_t frameSlot,
+                                        VkSemaphore acquireSemaphore,
+                                        VkSemaphore renderFinishedSemaphore,
+                                        VkFence completionFence) {
+    activeFrameSlot_ = frameSlot % MAX_FRAMES_IN_FLIGHT;
+    if (graph.sortedPassIndices().empty() && !graph.compile()) return;
+
     std::vector<CommandBatch> batches;
     partitionDAG(graph, batches);
-    submitBatches(batches);
-    // For validation, we could also execute the graph's passes on their respective command buffers,
-    // but for unit tests we just need partitioning and timeline correctness.
-    // Optionally, we could call graph.execute for each batch's cmdBuffer, but that is not needed for scheduling test.
+    if (batches.empty()) return;
+
+    if (acquireSemaphore != VK_NULL_HANDLE) {
+        for (auto& batch : batches) {
+            if (batch.queueType == QueueType::Graphics) {
+                batch.waitSemaphores.insert(batch.waitSemaphores.begin(), acquireSemaphore);
+                batch.waitValues.insert(batch.waitValues.begin(), 0);
+                batch.waitStageMasks.insert(batch.waitStageMasks.begin(),
+                                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+                break;
+            }
+        }
+    }
+    if (renderFinishedSemaphore != VK_NULL_HANDLE) {
+        auto& last = batches.back();
+        last.signalSemaphores.push_back(renderFinishedSemaphore);
+        last.signalValues.push_back(0);
+    }
+
+    if (device_ != VK_NULL_HANDLE) {
+        for (size_t bi = 0; bi < batches.size(); ++bi) {
+            const auto& batch = batches[bi];
+            if (batch.cmdBuffer == VK_NULL_HANDLE) {
+                std::fprintf(stderr, "[scheduler] batch %zu null cmdBuffer (queue %d)\n",
+                             bi, static_cast<int>(batch.queueType));
+                continue;
+            }
+            VkCommandBufferBeginInfo beginInfo{};
+            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            if (vkBeginCommandBuffer(batch.cmdBuffer, &beginInfo) != VK_SUCCESS) {
+                std::fprintf(stderr, "[scheduler] batch %zu begin failed\n", bi);
+                return;
+            }
+            graph.execute(batch.cmdBuffer, batch.passIndices);
+            if (vkEndCommandBuffer(batch.cmdBuffer) != VK_SUCCESS) {
+                std::fprintf(stderr, "[scheduler] batch %zu end failed\n", bi);
+                return;
+            }
+        }
+    }
+    (void)frameIndex;
+    submitBatches(batches, completionFence);
 }
 
 } // namespace Engine

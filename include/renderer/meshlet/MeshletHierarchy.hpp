@@ -104,6 +104,6 @@ inline uint32_t MeshletHierarchy::selectLOD(uint32_t pageID, float distance, flo
 } // namespace Engine
 
 namespace engine {
-    using MeshletHierarchy = Engine::MeshletHierarchy;
-    using MeshletHierarchyNode = Engine::MeshletHierarchyNode;
+    using MeshletHierarchy = ::Engine::MeshletHierarchy;
+    using MeshletHierarchyNode = ::Engine::MeshletHierarchyNode;
 }

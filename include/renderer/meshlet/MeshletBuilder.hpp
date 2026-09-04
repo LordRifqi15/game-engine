@@ -37,5 +37,5 @@ public:
 } // namespace Engine
 
 namespace engine {
-    using MeshletBuilder = Engine::MeshletBuilder;
+    using MeshletBuilder = ::Engine::MeshletBuilder;
 }

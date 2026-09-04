@@ -21,6 +21,6 @@ public:
 } // namespace Engine
 
 namespace engine {
-    using GBufferHandles = Engine::GBufferHandles;
-    using GBuffer = Engine::GBuffer;
+    using GBufferHandles = ::Engine::GBufferHandles;
+    using GBuffer = ::Engine::GBuffer;
 }

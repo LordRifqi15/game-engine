@@ -148,6 +148,20 @@ void VkRenderer::drawFrame() {
     currentFrame_ = (currentFrame_ + 1) % kMaxFramesInFlight;
 }
 
+VkDevice VkRenderer::deviceHandle() const { return device_->handle(); }
+VkInstance VkRenderer::instanceHandle() const { return vk_.handle(); }
+VkPhysicalDevice VkRenderer::physicalDeviceHandle() const { return device_->physical(); }
+VkQueue VkRenderer::graphicsQueueHandle() const { return device_->graphicsQueue(); }
+uint32_t VkRenderer::graphicsFamilyIndex() const { return device_->graphicsFamily(); }
+VkQueue VkRenderer::presentQueueHandle() const { return device_->presentQueue(); }
+VkSwapchainKHR VkRenderer::swapchainHandle() const { return swapchain_->handle(); }
+const std::vector<VkImage>& VkRenderer::swapchainImages() const { return swapchain_->images(); }
+const std::vector<VkImageView>& VkRenderer::swapchainImageViews() const { return swapchain_->views(); }
+VkFormat VkRenderer::swapchainFormat() const { return swapchain_->format(); }
+VkExtent2D VkRenderer::swapchainExtent() const { return swapchain_->extent(); }
+void VkRenderer::recreateSwapchain() { swapchain_->recreate(); }
+
+
 // ---- Editor overlay (Task 031) ----
 
 void VkRenderer::enableEditorOverlay(Window& window) {

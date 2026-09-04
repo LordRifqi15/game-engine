@@ -18,5 +18,5 @@ VkImageAspectFlags getAspectMask(const RenderGraphResource& res, ResourceUsage u
 } // namespace Engine
 
 namespace engine {
-    using BarrierState = Engine::BarrierState;
+    using BarrierState = ::Engine::BarrierState;
 }

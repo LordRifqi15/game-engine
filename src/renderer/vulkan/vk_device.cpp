@@ -63,8 +63,33 @@ VulkanDevice::VulkanDevice(VulkanInstance& vk)
 
     VkPhysicalDeviceFeatures features{};
 
+    // Task 052: modern pipeline needs timeline semaphores (1.2) plus
+    // synchronization2 + dynamic rendering (1.3). Verify before enabling.
+    VkPhysicalDeviceVulkan12Features supported12{};
+    supported12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    VkPhysicalDeviceVulkan13Features supported13{};
+    supported13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    supported13.pNext = &supported12;
+    VkPhysicalDeviceFeatures2 supported2{};
+    supported2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    supported2.pNext = &supported13;
+    vkGetPhysicalDeviceFeatures2(physical_, &supported2);
+    if (!supported12.timelineSemaphore || !supported13.synchronization2 ||
+        !supported13.dynamicRendering) {
+        fatal("GPU lacks required Vulkan features (timelineSemaphore/synchronization2/dynamicRendering)");
+    }
+    VkPhysicalDeviceVulkan12Features enable12{};
+    enable12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    enable12.timelineSemaphore = VK_TRUE;
+    VkPhysicalDeviceVulkan13Features enable13{};
+    enable13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    enable13.pNext = &enable12;
+    enable13.synchronization2 = VK_TRUE;
+    enable13.dynamicRendering = VK_TRUE;
+
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    createInfo.pNext = &enable13;
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueInfos.size());
     createInfo.pQueueCreateInfos = queueInfos.data();
     createInfo.pEnabledFeatures = &features;

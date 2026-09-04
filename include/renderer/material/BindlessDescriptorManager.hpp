@@ -58,5 +58,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using BindlessDescriptorManager = Engine::BindlessDescriptorManager;
+    using BindlessDescriptorManager = ::Engine::BindlessDescriptorManager;
 }

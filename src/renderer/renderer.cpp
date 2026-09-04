@@ -50,6 +50,23 @@ void Renderer::endFrame() {
     impl_->backend.drawFrame();
 }
 
+RuntimeRendererInfo Renderer::runtimeInfo() const {
+    RuntimeRendererInfo info;
+    info.instance = impl_->backend.instanceHandle();
+    info.device = impl_->backend.deviceHandle();
+    info.physicalDevice = impl_->backend.physicalDeviceHandle();
+    info.graphicsQueue = impl_->backend.graphicsQueueHandle();
+    info.presentQueue = impl_->backend.presentQueueHandle();
+    info.graphicsFamily = impl_->backend.graphicsFamilyIndex();
+    info.swapchain = impl_->backend.swapchainHandle();
+    info.swapchainImages = impl_->backend.swapchainImages();
+    info.swapchainImageViews = impl_->backend.swapchainImageViews();
+    info.swapchainFormat = impl_->backend.swapchainFormat();
+    info.swapchainExtent = impl_->backend.swapchainExtent();
+    return info;
+}
+
+void Renderer::recreateSwapchain() { impl_->backend.recreateSwapchain(); }
 void Renderer::enableEditorOverlay(Window& window) {
     impl_->backend.enableEditorOverlay(window);
 }

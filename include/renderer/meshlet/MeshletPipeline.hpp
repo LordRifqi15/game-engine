@@ -40,5 +40,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using MeshletPipeline = Engine::MeshletPipeline;
+    using MeshletPipeline = ::Engine::MeshletPipeline;
 }

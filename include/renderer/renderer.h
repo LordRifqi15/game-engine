@@ -5,6 +5,8 @@
 #include <glm/glm.hpp>
 
 #include <string>
+#include <vulkan/vulkan.h>
+#include <vector>
 #include "core/instance_data.h"
 #include "core/light.h"
 #include "core/material.h"
@@ -14,9 +16,21 @@
 // Backend selected in renderer.cpp (currently Vulkan only).
 namespace engine {
 
-class Window;
-class Texture;
+struct RuntimeRendererInfo {
+    VkInstance instance{VK_NULL_HANDLE};
+    VkDevice device{VK_NULL_HANDLE};
+    VkPhysicalDevice physicalDevice{VK_NULL_HANDLE};
+    VkQueue graphicsQueue{VK_NULL_HANDLE};
+    VkQueue presentQueue{VK_NULL_HANDLE};
+    uint32_t graphicsFamily{VK_QUEUE_FAMILY_IGNORED};
+    VkSwapchainKHR swapchain{VK_NULL_HANDLE};
+    std::vector<VkImage> swapchainImages;
+    std::vector<VkImageView> swapchainImageViews;
+    VkFormat swapchainFormat{VK_FORMAT_UNDEFINED};
+    VkExtent2D swapchainExtent{0, 0};
+};
 
+class Window;
 class Renderer {
 public:
     explicit Renderer(Window& window);
@@ -41,7 +55,6 @@ public:
     // Depth readback for CPU Hi-Z occlusion (call after endFrame).
     void requestDepthReadback();
     const std::vector<float>& depthPixels() const;
-
     const std::vector<unsigned char>& colorPixels() const;
 
     // Skinning: upload joint matrices for next drawFrame (set 4 SSBO).
@@ -54,11 +67,13 @@ public:
     // Submits all queued draw calls for this frame (present).
     void endFrame();
 
+    RuntimeRendererInfo runtimeInfo() const;
+    void recreateSwapchain();
+
     // Editor overlay (Task 031): ImGui-based node editor.
     void enableEditorOverlay(Window& window);
     void editorBeginFrame();
     void editorEndFrame();
-
 private:
     class Impl;   // backend-owned state
     Impl* impl_ = nullptr;

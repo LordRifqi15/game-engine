@@ -23,5 +23,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using DeferredPipeline = Engine::DeferredPipeline;
+    using DeferredPipeline = ::Engine::DeferredPipeline;
 }

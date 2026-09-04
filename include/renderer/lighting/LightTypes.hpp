@@ -78,8 +78,8 @@ inline uint32_t getClusterIndex(glm::vec2 screenUV, float viewZ, const ClusterUn
 } // namespace Engine
 
 namespace engine {
-    using LightType = Engine::LightType;
-    using GPULight = Engine::GPULight;
-    using ClusterCell = Engine::ClusterCell;
-    using ClusterUniforms = Engine::ClusterUniforms;
+    using LightType = ::Engine::LightType;
+    using GPULight = ::Engine::GPULight;
+    using ClusterCell = ::Engine::ClusterCell;
+    using ClusterUniforms = ::Engine::ClusterUniforms;
 }

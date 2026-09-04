@@ -342,7 +342,12 @@ bool RenderGraph::compile(uint64_t frameIndex, TransientResourcePool& pool) {
 
 
 void RenderGraph::execute(VkCommandBuffer cmdBuffer) {
-    for (uint32_t pi : sortedPassIndices_) {
+    execute(cmdBuffer, sortedPassIndices_);
+}
+
+void RenderGraph::execute(VkCommandBuffer cmdBuffer, const std::vector<uint32_t>& passIndices) {
+    for (uint32_t pi : passIndices) {
+        if (pi >= passes_.size()) continue;
         resolveBarriers(pi, cmdBuffer);
         auto& pass = passes_[pi];
         if (pass.executeCallback) pass.executeCallback(cmdBuffer);

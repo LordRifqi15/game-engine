@@ -35,5 +35,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using GPUCullingSystem = Engine::GPUCullingSystem;
+    using GPUCullingSystem = ::Engine::GPUCullingSystem;
 }

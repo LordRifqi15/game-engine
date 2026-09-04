@@ -82,5 +82,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using HiZPyramid = Engine::HiZPyramid;
+    using HiZPyramid = ::Engine::HiZPyramid;
 }

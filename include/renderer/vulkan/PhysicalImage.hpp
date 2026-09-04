@@ -20,5 +20,5 @@ struct PhysicalImage {
 } // namespace Engine
 
 namespace engine {
-    using PhysicalImage = Engine::PhysicalImage;
+    using PhysicalImage = ::Engine::PhysicalImage;
 }

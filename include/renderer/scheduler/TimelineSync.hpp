@@ -27,5 +27,5 @@ public:
 } // namespace Engine
 
 namespace engine {
-    using TimelineSync = Engine::TimelineSync;
+    using TimelineSync = ::Engine::TimelineSync;
 }

@@ -52,5 +52,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using TextureRegistry = Engine::TextureRegistry;
+    using TextureRegistry = ::Engine::TextureRegistry;
 }

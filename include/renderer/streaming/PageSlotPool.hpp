@@ -42,5 +42,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using PageSlotPool = Engine::PageSlotPool;
+    using PageSlotPool = ::Engine::PageSlotPool;
 }

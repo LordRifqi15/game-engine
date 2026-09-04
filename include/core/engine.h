@@ -18,6 +18,11 @@
 
 #include "editor/anim_graph_editor.h"
 
+namespace Engine {
+class Renderer;
+enum class RendererBackendMode;
+}
+
 namespace engine {
 
 class Window;
@@ -41,10 +46,11 @@ private:
     void render();
     void spawnFallbackScene();
     bool tryLoadScene(const std::string& path);
-
     Window& window_;
     Time time_;
     Renderer* renderer_ = nullptr;
+    std::unique_ptr<::Engine::Renderer> renderGraphRenderer_;
+    ::Engine::RendererBackendMode rendererBackendMode_;
     Scene* scene_ = nullptr;
     class Mesh* triangleMesh_ = nullptr;
     class Mesh* cubeMesh_ = nullptr;

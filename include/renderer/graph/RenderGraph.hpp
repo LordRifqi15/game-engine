@@ -49,7 +49,7 @@ public:
 
     // 3. Execution Phase (record barriers and execute pass callbacks)
     void execute(VkCommandBuffer cmdBuffer);
-
+    void execute(VkCommandBuffer cmdBuffer, const std::vector<uint32_t>& passIndices);
     // 4. Reset Phase (wipes transient state for next frame)
     void clear();
 
@@ -83,5 +83,5 @@ private:
 } // namespace Engine
 
 namespace engine {
-    using RenderGraph = Engine::RenderGraph;
+    using RenderGraph = ::Engine::RenderGraph;
 }

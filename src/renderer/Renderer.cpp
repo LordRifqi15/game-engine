@@ -3,84 +3,176 @@
 #include "renderer/graph/RenderGraphValidator.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <GLFW/glfw3.h>
+#include "imgui.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_vulkan.h"
 
 namespace Engine {
 
-void Renderer::init(VkDevice device, VkPhysicalDevice physicalDevice, const QueueFamilyIndices& queueIndices) {
-    device_ = device;
-    physicalDevice_ = physicalDevice;
+void Renderer::init(VkDevice device, VkPhysicalDevice physicalDevice,
+                    const QueueFamilyIndices& queueIndices) {
+    RuntimeRendererConfig config;
+    config.device = device;
+    config.physicalDevice = physicalDevice;
+    config.queueIndices = queueIndices;
+    init(config);
+}
+
+void Renderer::init(const RuntimeRendererConfig& config) {
+    if (device_ != VK_NULL_HANDLE) shutdown();
+
+    device_ = config.device;
+    instance_ = config.instance;
+    physicalDevice_ = config.physicalDevice;
+    graphicsQueue_ = config.graphicsQueue;
+    graphicsFamily_ = config.queueIndices.graphicsFamily;
     transientPool_.~TransientResourcePool();
-    new (&transientPool_) TransientResourcePool(device, physicalDevice);
-    // Need to reconstruct scheduler with correct device/indices (since default constructed with null)
+    new (&transientPool_) TransientResourcePool(device_, physicalDevice_);
     scheduler_.~FrameScheduler();
-    new (&scheduler_) FrameScheduler(device, queueIndices);
-    // Create fences (dummy for headless)
+    new (&scheduler_) FrameScheduler(device_, config.queueIndices,
+                                     config.graphicsQueue, config.computeQueue,
+                                     config.transferQueue);
+    updateSwapchain(config.swapchain);
+
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         if (device_ == VK_NULL_HANDLE) {
             inFlightFences_[i] = reinterpret_cast<VkFence>(0x6000 + i);
-        } else {
-            VkFenceCreateInfo ci{};
-            ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-            vkCreateFence(device_, &ci, nullptr, &inFlightFences_[i]);
+            imageAvailable_[i] = VK_NULL_HANDLE;
+            continue;
         }
+
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+        vkCreateFence(device_, &fenceInfo, nullptr, &inFlightFences_[i]);
+
+        VkSemaphoreCreateInfo semaphoreInfo{};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        vkCreateSemaphore(device_, &semaphoreInfo, nullptr, &imageAvailable_[i]);
     }
     currentFrameIndex_ = 0;
     framebufferResized_ = false;
-    renderExtent_ = VkExtent2D{1920, 1080};
 }
 
+void Renderer::updateSwapchain(const RuntimeSwapchainState& swapchain) {
+    if (device_ != VK_NULL_HANDLE) {
+        for (auto semaphore : renderFinishedByImage_) {
+            if (semaphore != VK_NULL_HANDLE) vkDestroySemaphore(device_, semaphore, nullptr);
+        }
+    }
+    renderFinishedByImage_.clear();
+    swapchain_ = swapchain;
+    renderExtent_ = swapchain_.extent.width != 0 && swapchain_.extent.height != 0
+        ? swapchain_.extent : renderExtent_;
+    if (device_ != VK_NULL_HANDLE && !swapchain_.images.empty()) {
+        VkSemaphoreCreateInfo semaphoreInfo{};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        renderFinishedByImage_.resize(swapchain_.images.size(), VK_NULL_HANDLE);
+        for (auto& semaphore : renderFinishedByImage_) {
+            vkCreateSemaphore(device_, &semaphoreInfo, nullptr, &semaphore);
+        }
+    }
+}
 void Renderer::shutdown() {
+    shutdownEditorOverlay();
     if (device_ != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
-        for (auto f : inFlightFences_) if (f) vkDestroyFence(device_, f, nullptr);
+        for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            if (inFlightFences_[i]) vkDestroyFence(device_, inFlightFences_[i], nullptr);
+            if (imageAvailable_[i]) vkDestroySemaphore(device_, imageAvailable_[i], nullptr);
+        }
+        for (auto semaphore : renderFinishedByImage_) {
+            if (semaphore != VK_NULL_HANDLE) vkDestroySemaphore(device_, semaphore, nullptr);
+        }
     }
-    for (auto &f : inFlightFences_) f = VK_NULL_HANDLE;
+    for (auto& fence : inFlightFences_) fence = VK_NULL_HANDLE;
+    for (auto& semaphore : imageAvailable_) semaphore = VK_NULL_HANDLE;
+    renderFinishedByImage_.clear();
     scheduler_.~FrameScheduler();
     new (&scheduler_) FrameScheduler(VK_NULL_HANDLE, QueueFamilyIndices{});
     transientPool_.~TransientResourcePool();
     new (&transientPool_) TransientResourcePool(VK_NULL_HANDLE, VK_NULL_HANDLE);
     device_ = VK_NULL_HANDLE;
+    instance_ = VK_NULL_HANDLE;
     physicalDevice_ = VK_NULL_HANDLE;
+    graphicsQueue_ = VK_NULL_HANDLE;
+    graphicsFamily_ = UINT32_MAX;
+    swapchain_ = {};
     currentFrameIndex_ = 0;
 }
 
-bool Renderer::beginFrame(FrameContext& outContext, float dt, entt::registry& registry) {
-    (void)registry;
-    // Handle resize
-    if (framebufferResized_) {
-        // In real engine, would recreate swapchain; here just clear flag and return false to skip this frame
+bool Renderer::beginFrame(FrameContext& outContext, float dt) {
+    const uint32_t slot = currentFrameIndex_ % MAX_FRAMES_IN_FLIGHT;
+    VkFence fence = inFlightFences_[slot];
+    if (device_ != VK_NULL_HANDLE && fence != VK_NULL_HANDLE) {
+        if (vkWaitForFences(device_, 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) return false;
+    }
+
+    uint32_t imageIndex = slot;
+    if (swapchain_.handle != VK_NULL_HANDLE) {
+        if (swapchain_.images.empty() || swapchain_.imageViews.size() != swapchain_.images.size()) return false;
+        VkResult result = vkAcquireNextImageKHR(device_, swapchain_.handle, UINT64_MAX,
+                                                imageAvailable_[slot], VK_NULL_HANDLE, &imageIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+            vkDeviceWaitIdle(device_);
+            framebufferResized_ = true;
+            transientPool_.clear();
+            return false;
+        }
+        if (result != VK_SUCCESS) return false;
+        framebufferResized_ = false;
+        if (imageIndex >= swapchain_.images.size()) return false;
+    } else if (framebufferResized_) {
         framebufferResized_ = false;
         return false;
     }
-    uint32_t slot = currentFrameIndex_ % MAX_FRAMES_IN_FLIGHT;
-    VkFence fence = inFlightFences_[slot];
-    if (device_ != VK_NULL_HANDLE && fence != VK_NULL_HANDLE) {
-        vkWaitForFences(device_, 1, &fence, VK_TRUE, UINT64_MAX);
-        vkResetFences(device_, 1, &fence);
-    }
-    // Simulate swapchain acquire (headless: dummy image)
-    // In real engine, would call vkAcquireNextImageKHR and handle OUT_OF_DATE
-    // For test, we simulate success unless renderExtent is 0 (resize case)
+
     if (renderExtent_.width == 0 || renderExtent_.height == 0) {
-        onResize(1920, 1080);
+        framebufferResized_ = true;
+        transientPool_.clear();
         return false;
     }
+    if (device_ != VK_NULL_HANDLE && fence != VK_NULL_HANDLE) {
+        if (vkResetFences(device_, 1, &fence) != VK_SUCCESS) return false;
+        scheduler_.resetFrame(slot);
+    }
+    transientPool_.advanceFrame(currentFrameIndex_);
 
+    outContext = {};
     outContext.frameIndex = currentFrameIndex_;
     outContext.frameSlot = slot;
     outContext.dt = dt;
     outContext.renderExtent = renderExtent_;
-    outContext.swapchainImage = reinterpret_cast<VkImage>(0x7000 + slot);
-    outContext.swapchainImageView = reinterpret_cast<VkImageView>(0x8000 + slot);
-    outContext.swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
-    outContext.swapchainImageIndex = slot;
-    // Dummy camera (look at origin from 5,5,5)
-    glm::vec3 camPos{5,5,5};
-    glm::mat4 view = glm::lookAt(camPos, glm::vec3(0,0,0), glm::vec3(0,1,0));
-    float aspect = renderExtent_.width ? float(renderExtent_.width)/float(renderExtent_.height) : 1.0f;
+    outContext.swapchainImageIndex = imageIndex;
+    outContext.swapchainFormat = swapchain_.format != VK_FORMAT_UNDEFINED
+        ? swapchain_.format : VK_FORMAT_B8G8R8A8_UNORM;
+    if (swapchain_.handle != VK_NULL_HANDLE) {
+        outContext.swapchainImage = swapchain_.images[imageIndex];
+        outContext.swapchainImageView = swapchain_.imageViews[imageIndex];
+    } else {
+        outContext.swapchainImage = reinterpret_cast<VkImage>(0x7000 + slot);
+        outContext.swapchainImageView = reinterpret_cast<VkImageView>(0x8000 + slot);
+        outContext.globalVertexBuffer = reinterpret_cast<VkBuffer>(0x9000);
+        outContext.globalIndexBuffer = reinterpret_cast<VkBuffer>(0x9001);
+        outContext.globalInstanceBuffer = reinterpret_cast<VkBuffer>(0x9002);
+        outContext.globalMeshletBuffer = reinterpret_cast<VkBuffer>(0x9003);
+        outContext.globalMaterialBuffer = reinterpret_cast<VkBuffer>(0x9004);
+        outContext.globalLightBuffer = reinterpret_cast<VkBuffer>(0x9005);
+        outContext.totalInstances = 1000;
+        outContext.totalMeshlets = 500;
+        outContext.activeLightCount = 16;
+    }
+
+    glm::vec3 camPos{5, 5, 5};
+    glm::mat4 view = glm::lookAt(camPos, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+    float aspect = renderExtent_.height
+        ? float(renderExtent_.width) / float(renderExtent_.height) : 1.0f;
     glm::mat4 proj = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, 0.1f, 100.0f);
-    proj[1][1] *= -1; // Vulkan Y flip
+    proj[1][1] *= -1;
     outContext.camera.viewMatrix = view;
     outContext.camera.projMatrix = proj;
     outContext.camera.invViewProj = glm::inverse(proj * view);
@@ -89,46 +181,52 @@ bool Renderer::beginFrame(FrameContext& outContext, float dt, entt::registry& re
     outContext.camera.zFar = 100.0f;
     outContext.camera.fov = glm::radians(60.0f);
     outContext.camera.aspectRatio = aspect;
-    // Dummy buffers (headless)
-    outContext.globalVertexBuffer = reinterpret_cast<VkBuffer>(0x9000);
-    outContext.globalIndexBuffer = reinterpret_cast<VkBuffer>(0x9001);
-    outContext.globalInstanceBuffer = reinterpret_cast<VkBuffer>(0x9002);
-    outContext.globalMeshletBuffer = reinterpret_cast<VkBuffer>(0x9003);
-    outContext.globalMaterialBuffer = reinterpret_cast<VkBuffer>(0x9004);
-    outContext.globalLightBuffer = reinterpret_cast<VkBuffer>(0x9005);
-    outContext.totalInstances = 1000;
-    outContext.totalMeshlets = 500;
-    outContext.activeLightCount = 16;
-    // clusterUniforms already default
     return true;
+}
+
+bool Renderer::beginFrame(FrameContext& outContext, float dt, entt::registry& registry) {
+    (void)registry;
+    return beginFrame(outContext, dt);
 }
 
 void Renderer::renderFrame(FrameContext& ctx) {
     RenderGraph graph;
     buildFrameGraph(graph, ctx);
-    // Validate before compile (hazard checking)
     std::string err;
     if (!RenderGraphValidator::validate(graph, err)) {
-        // In real engine, would assert/log; for test, we still try to compile
-        // fprintf(stderr, "Validator: %s\n", err.c_str());
+        std::fprintf(stderr, "[rendergraph] validator: %s\n", err.c_str());
+        return;
     }
-    // Compile with transient pool (lifetime + aliasing)
-    // For headless, we use the pool's current frame index
-    graph.compile(ctx.frameIndex, transientPool_);
-    // Schedule and execute via FrameScheduler (vkQueueSubmit2)
-    scheduler_.scheduleAndExecute(graph, ctx.frameIndex);
-    // For headless tests, we also need to clear transient resources for next frame
-    // But we keep graph alive until endFrame? For now, just clear pool's frame slot
-    transientPool_.advanceFrame(ctx.frameIndex);
+    if (!graph.compile(ctx.frameIndex, transientPool_)) {
+        std::fputs("[rendergraph] compile failed\n", stderr);
+        return;
+    }
+    VkSemaphore renderFinished = VK_NULL_HANDLE;
+    if (ctx.swapchainImageIndex < renderFinishedByImage_.size()) {
+        renderFinished = renderFinishedByImage_[ctx.swapchainImageIndex];
+    }
+    scheduler_.scheduleAndExecute(graph, ctx.frameIndex, ctx.frameSlot,
+                                   imageAvailable_[ctx.frameSlot],
+                                   renderFinished,
+                                   inFlightFences_[ctx.frameSlot]);
 }
 
 void Renderer::endFrame(const FrameContext& ctx) {
-    (void)ctx;
-    // In real engine, would submit present and signal fence
-    // For headless, just advance frame index and flip slot
-    uint32_t slot = currentFrameIndex_ % MAX_FRAMES_IN_FLIGHT;
-    if (device_ != VK_NULL_HANDLE && inFlightFences_[slot] != VK_NULL_HANDLE) {
-        // Would signal fence after present; for headless, just keep signaled
+    if (swapchain_.handle != VK_NULL_HANDLE && swapchain_.presentQueue != VK_NULL_HANDLE &&
+        ctx.swapchainImageIndex < renderFinishedByImage_.size()) {
+        VkSemaphore waitSemaphore = renderFinishedByImage_[ctx.swapchainImageIndex];
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = &waitSemaphore;
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = &swapchain_.handle;
+        presentInfo.pImageIndices = &ctx.swapchainImageIndex;
+        VkResult result = vkQueuePresentKHR(swapchain_.presentQueue, &presentInfo);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+            framebufferResized_ = true;
+            transientPool_.clear();
+        }
     }
     currentFrameIndex_++;
 }
@@ -136,7 +234,6 @@ void Renderer::endFrame(const FrameContext& ctx) {
 void Renderer::onResize(uint32_t newWidth, uint32_t newHeight) {
     renderExtent_ = VkExtent2D{newWidth, newHeight};
     framebufferResized_ = true;
-    // In real engine, would recreate swapchain and transient resources
     transientPool_.clear();
 }
 
@@ -159,12 +256,16 @@ void Renderer::buildFrameGraph(RenderGraph& graph, const FrameContext& ctx) {
         .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
     });
 
+    VkExtent2D hizExtent{std::max(1u, ctx.renderExtent.width / 2),
+                         std::max(1u, ctx.renderExtent.height / 2)};
+    uint32_t hizMips = 1;
+    for (uint32_t d = std::max(hizExtent.width, hizExtent.height); d > 1; d >>= 1) ++hizMips;
     auto hizPyramid = graph.createResource({
         .name = "HiZ_Pyramid",
         .format = VK_FORMAT_R32_SFLOAT,
-        .extent = {ctx.renderExtent.width / 2, ctx.renderExtent.height / 2},
+        .extent = hizExtent,
         .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        .mipLevels = 11
+        .mipLevels = hizMips
     });
 
     auto hdrTarget = graph.createResource({
@@ -296,7 +397,9 @@ void Renderer::buildFrameGraph(RenderGraph& graph, const FrameContext& ctx) {
     );
 }
 
-// Stubs for recording (headless)
+// Pass recording. Full geometry/lighting pipelines land per-pass as they acquire
+// live pipelines; tonemapping already clears the swapchain target so the live
+// WSI path presents a defined image.
 void Renderer::recordShadowPass(VkCommandBuffer, const FrameContext&) {}
 void Renderer::recordClusterCullCompute(VkCommandBuffer, const FrameContext&) {}
 void Renderer::recordHiZBuild(VkCommandBuffer, const FrameContext&) {}
@@ -304,7 +407,140 @@ void Renderer::recordMeshletCull(VkCommandBuffer, const FrameContext&) {}
 void Renderer::recordGBufferDraw(VkCommandBuffer, const FrameContext&) {}
 void Renderer::recordDeferredLighting(VkCommandBuffer, const FrameContext&) {}
 void Renderer::recordSkyboxAndTransparents(VkCommandBuffer, const FrameContext&) {}
-void Renderer::recordTonemapping(VkCommandBuffer, const FrameContext&) {}
-void Renderer::recordEditorUI(VkCommandBuffer, const FrameContext&) {}
+void Renderer::recordTonemapping(VkCommandBuffer cb, const FrameContext& ctx) {
+    if (cb == VK_NULL_HANDLE || swapchain_.handle == VK_NULL_HANDLE) return;
+    if (ctx.swapchainImageView == VK_NULL_HANDLE) return;
+    VkRenderingAttachmentInfo color{};
+    color.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    color.imageView = ctx.swapchainImageView;
+    color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color.clearValue.color.float32[0] = 0.05f;
+    color.clearValue.color.float32[1] = 0.05f;
+    color.clearValue.color.float32[2] = 0.08f;
+    color.clearValue.color.float32[3] = 1.0f;
+    VkRenderingInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    info.renderArea.offset = {0, 0};
+    info.renderArea.extent = ctx.renderExtent;
+    info.layerCount = 1;
+    info.colorAttachmentCount = 1;
+    info.pColorAttachments = &color;
+    vkCmdBeginRendering(cb, &info);
+    vkCmdEndRendering(cb);
+}
+void Renderer::recordEditorUI(VkCommandBuffer cb, const FrameContext& ctx) {
+    if (cb == VK_NULL_HANDLE || !uiReady_ || swapchain_.handle == VK_NULL_HANDLE) return;
+    if (ctx.swapchainImageView == VK_NULL_HANDLE) return;
+    ImGui::SetCurrentContext(uiContext_);
+    ImDrawData* draw = ImGui::GetDrawData();
+    if (!draw || draw->TotalVtxCount == 0) return;
+    VkRenderingAttachmentInfo color{};
+    color.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    color.imageView = ctx.swapchainImageView;
+    color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    VkRenderingInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    info.renderArea.offset = {0, 0};
+    info.renderArea.extent = ctx.renderExtent;
+    info.layerCount = 1;
+    info.colorAttachmentCount = 1;
+    info.pColorAttachments = &color;
+    vkCmdBeginRendering(cb, &info);
+    ImGui_ImplVulkan_RenderDrawData(draw, cb);
+    vkCmdEndRendering(cb);
+}
+
+void Renderer::initEditorOverlay(GLFWwindow* window, VkFormat colorFormat) {
+    if (uiReady_ || window == nullptr) return;
+#ifndef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
+    return;
+#else
+    if (device_ == VK_NULL_HANDLE || instance_ == VK_NULL_HANDLE ||
+        physicalDevice_ == VK_NULL_HANDLE || graphicsQueue_ == VK_NULL_HANDLE ||
+        graphicsFamily_ == UINT32_MAX) {
+        return;
+    }
+#endif
+    uiContext_ = ImGui::CreateContext();
+    ImGui::SetCurrentContext(uiContext_);
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.IniFilename = nullptr;
+
+    VkDescriptorPoolSize pools[4]{};
+    pools[0] = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 64};
+    pools[1] = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 16};
+    pools[2] = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16};
+    pools[3] = {VK_DESCRIPTOR_TYPE_SAMPLER, 16};
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    poolInfo.maxSets = 64;
+    poolInfo.poolSizeCount = 4;
+    poolInfo.pPoolSizes = pools;
+    if (vkCreateDescriptorPool(device_, &poolInfo, nullptr, &uiPool_) != VK_SUCCESS) {
+        ImGui::DestroyContext();
+        uiContext_ = nullptr;
+        return;
+    }
+
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+    ImGui_ImplVulkan_InitInfo init{};
+    init.Instance = instance_;
+    init.PhysicalDevice = physicalDevice_;
+    init.Device = device_;
+    init.QueueFamily = graphicsFamily_;
+    init.Queue = graphicsQueue_;
+    init.DescriptorPool = uiPool_;
+    init.MinImageCount = 2;
+    init.ImageCount = std::max(2u, static_cast<uint32_t>(swapchain_.images.size()));
+    init.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    init.UseDynamicRendering = true;
+    init.PipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    init.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+    init.PipelineRenderingCreateInfo.pColorAttachmentFormats = &colorFormat;
+    if (!ImGui_ImplVulkan_Init(&init)) {
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+        uiContext_ = nullptr;
+        vkDestroyDescriptorPool(device_, uiPool_, nullptr);
+        uiPool_ = VK_NULL_HANDLE;
+        return;
+    }
+    uiReady_ = true;
+}
+
+void Renderer::shutdownEditorOverlay() {
+    if (!uiReady_) return;
+    if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
+    ImGui::SetCurrentContext(uiContext_);
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    uiContext_ = nullptr;
+    if (device_ != VK_NULL_HANDLE && uiPool_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(device_, uiPool_, nullptr);
+    }
+    uiPool_ = VK_NULL_HANDLE;
+    uiReady_ = false;
+}
+
+void Renderer::editorBegin() {
+    if (!uiReady_) return;
+    ImGui::SetCurrentContext(uiContext_);
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+}
+
+void Renderer::editorEnd() {
+    if (!uiReady_) return;
+    ImGui::SetCurrentContext(uiContext_);
+    ImGui::Render();
+}
 
 } // namespace Engine

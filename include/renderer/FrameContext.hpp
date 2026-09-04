@@ -51,6 +51,6 @@ struct FrameContext {
 } // namespace Engine
 
 namespace engine {
-    using FrameContext = Engine::FrameContext;
-    using CameraSnapshot = Engine::CameraSnapshot;
+    using FrameContext = ::Engine::FrameContext;
+    using CameraSnapshot = ::Engine::CameraSnapshot;
 }
