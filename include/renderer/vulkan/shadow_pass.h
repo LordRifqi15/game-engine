@@ -34,6 +34,10 @@ public:
     void drawBatch(VkCommandBuffer cmd, const Mesh& mesh,
                    uint32_t instanceCount, const glm::mat4& lightVP,
                    VkBuffer instanceBuffer);
+    // Modern path: caller-owned vertex/index buffers with instance range.
+    void drawBatchAt(VkCommandBuffer cmd, VkBuffer vertexBuffer, VkBuffer indexBuffer,
+                     uint32_t indexCount, uint32_t instanceCount, uint32_t firstInstance,
+                     const glm::mat4& lightVP, VkBuffer instanceBuffer);
     // Ends the render pass.
     void end(VkCommandBuffer cmd);
 

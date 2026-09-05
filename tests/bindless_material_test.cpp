@@ -1,5 +1,5 @@
 // Bindless Materials: slot allocation, material updates, fallback
-// Build: g++ -std=c++17 -I../include -I../third_party ../src/renderer/material/BindlessDescriptorManager.cpp ../src/renderer/material/TextureRegistry.cpp ../src/renderer/vulkan/VkFeatureManager.cpp bindless_material_test.cpp -o /tmp/bindless_material_test -lvulkan && /tmp/bindless_material_test
+// Build: g++ -std=c++17 -I../include -I../third_party ../src/renderer/material/BindlessDescriptorManager.cpp ../src/renderer/vulkan/VkDeviceMemoryHelper.cpp ../src/renderer/material/TextureRegistry.cpp ../src/renderer/vulkan/VkFeatureManager.cpp bindless_material_test.cpp -o /tmp/bindless_material_test -lvulkan && /tmp/bindless_material_test
 
 #include "renderer/material/BindlessDescriptorManager.hpp"
 #include "renderer/material/MaterialTypes.hpp"

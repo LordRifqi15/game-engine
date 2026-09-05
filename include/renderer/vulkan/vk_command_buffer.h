@@ -46,6 +46,7 @@ public:
     // Backend accessors (same module, allowed).
     VkCommandBuffer handle(uint32_t frameIndex) const { return buffers_[frameIndex]; }
     void updateJoints(uint32_t frameIndex, const std::vector<glm::mat4>& mats);
+    class VulkanEnvironment& environment() { return *environment_; }
 
     // Editor overlay (Task 031): invoked inside the main render pass, before End.
     void setOverlay(std::function<void(VkCommandBuffer)> cb) { overlay_ = std::move(cb); }

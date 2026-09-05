@@ -195,17 +195,24 @@ bool RenderGraph::compile() {
         return false;
     }
 
-    // 4. Dead pass pruning
-    // Identify resources read as Present (sink)
+    // 4. Dead pass pruning. Present reads are the sink; imported resources are
+    // observable side effects (swapchain, history, external shadow maps), so
+    // passes writing them are live by definition.
     std::unordered_set<uint32_t> neededRes;
     bool hasPresent = false;
     for (auto& p : passes_) {
         for (auto& [h, u] : p.reads) if (u == ResourceUsage::Present && h.isValid()) { neededRes.insert(h.id); hasPresent = true; }
         for (auto& [h, u] : p.writes) if (u == ResourceUsage::Present && h.isValid()) { neededRes.insert(h.id); hasPresent = true; }
     }
+    for (uint32_t i = 0; i < (uint32_t)resources_.size(); ++i) {
+        if (resources_[i].type == ResourceType::Imported) neededRes.insert(i);
+    }
     std::vector<uint32_t> prunedSorted;
     if (hasPresent) {
         std::unordered_set<uint32_t> neededBufs;
+        for (uint32_t i = 0; i < (uint32_t)bufferResources_.size(); ++i) {
+            if (bufferResources_[i].type == ResourceType::Imported) neededBufs.insert(i);
+        }
         std::vector<char> live(n, 0);
         // reverse walk: a pass is live if it writes a needed resource (image or buffer) or reads Present
         for (int idx = (int)sorted.size()-1; idx >=0; --idx) {

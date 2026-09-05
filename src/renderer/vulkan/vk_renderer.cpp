@@ -160,6 +160,7 @@ const std::vector<VkImageView>& VkRenderer::swapchainImageViews() const { return
 VkFormat VkRenderer::swapchainFormat() const { return swapchain_->format(); }
 VkExtent2D VkRenderer::swapchainExtent() const { return swapchain_->extent(); }
 void VkRenderer::recreateSwapchain() { swapchain_->recreate(); }
+VulkanEnvironment& VkRenderer::environment() { return commandBuffers_->environment(); }
 
 
 // ---- Editor overlay (Task 031) ----

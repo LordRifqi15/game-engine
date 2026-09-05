@@ -237,6 +237,20 @@ void VulkanShadowPass::drawBatch(VkCommandBuffer cmd, const Mesh& mesh,
                      instanceCount, 0, 0, 0);
 }
 
+void VulkanShadowPass::drawBatchAt(VkCommandBuffer cmd, VkBuffer vertexBuffer, VkBuffer indexBuffer,
+                                   uint32_t indexCount, uint32_t instanceCount,
+                                   uint32_t firstInstance, const glm::mat4& lightVP,
+                                   VkBuffer instanceBuffer) {
+    if (instanceCount == 0 || indexCount == 0) return;
+    vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4),
+                       &lightVP);
+    VkBuffer buffers[] = {vertexBuffer, instanceBuffer};
+    VkDeviceSize offsets[] = {0, 0};
+    vkCmdBindVertexBuffers(cmd, 0, 2, buffers, offsets);
+    vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(cmd, indexCount, instanceCount, 0, 0, firstInstance);
+}
+
 void VulkanShadowPass::end(VkCommandBuffer cmd) {
     vkCmdEndRenderPass(cmd);
 }

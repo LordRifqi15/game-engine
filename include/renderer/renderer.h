@@ -70,6 +70,11 @@ public:
     RuntimeRendererInfo runtimeInfo() const;
     void recreateSwapchain();
 
+    // Borrowed Vulkan objects for the modern scene path (stable lifetime).
+    class VulkanDevice& vulkanDevice();
+    class VulkanSwapchain& vulkanSwapchain();
+    class VulkanEnvironment& environment();
+
     // Editor overlay (Task 031): ImGui-based node editor.
     void enableEditorOverlay(Window& window);
     void editorBeginFrame();

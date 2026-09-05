@@ -1,6 +1,7 @@
 #include "renderer/Renderer.hpp"
 #include "renderer/deferred/GBuffer.hpp"
 #include "renderer/graph/RenderGraphValidator.hpp"
+#include "renderer/SceneRenderer.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <algorithm>
@@ -198,7 +199,10 @@ void Renderer::renderFrame(FrameContext& ctx) {
         return;
     }
     if (!graph.compile(ctx.frameIndex, transientPool_)) {
-        std::fputs("[rendergraph] compile failed\n", stderr);
+        std::fprintf(stderr, "[rendergraph] compile failed frame %llu passes %zu:",
+                     (unsigned long long)ctx.frameIndex, graph.passCount());
+        for (auto& p : graph.passes()) std::fprintf(stderr, " %s", p.name.c_str());
+        std::fputc('\n', stderr);
         return;
     }
     VkSemaphore renderFinished = VK_NULL_HANDLE;
@@ -209,6 +213,15 @@ void Renderer::renderFrame(FrameContext& ctx) {
                                    imageAvailable_[ctx.frameSlot],
                                    renderFinished,
                                    inFlightFences_[ctx.frameSlot]);
+}
+
+void Renderer::renderFrame(FrameContext& ctx, const GPUScene* scene) {
+    activeScene_ = scene;
+    if (sceneRenderer_ && scene) {
+        sceneRenderer_->upload(*scene, ctx, ctx.frameSlot);
+    }
+    renderFrame(ctx);
+    activeScene_ = nullptr;
 }
 
 void Renderer::endFrame(const FrameContext& ctx) {
@@ -238,7 +251,11 @@ void Renderer::onResize(uint32_t newWidth, uint32_t newHeight) {
 }
 
 void Renderer::buildFrameGraph(RenderGraph& graph, const FrameContext& ctx) {
-    // 1. Import persistent resources
+    // Task 053: authoritative scene path builds the real workload graph.
+    if (sceneRenderer_ && activeScene_) {
+        sceneRenderer_->buildPasses(graph, ctx);
+        return;
+    }
     auto swapchain = graph.importImage("Swapchain", ctx.swapchainImage, ctx.swapchainImageView,
                                        ctx.swapchainFormat, ctx.renderExtent, ResourceUsage::None);
 

@@ -2,7 +2,7 @@
 
 Experimental C++17 game engine built around Vulkan, GLFW, a custom ECS, visual scripting, and editor tooling.
 
-The project is an active prototype. It contains a working legacy Vulkan render path plus a newer render-graph and multi-queue renderer path that is still being integrated.
+The project is an active prototype. Task 053 cut the newer render-graph renderer (`SceneRenderer`) over to the default live path: `ENGINE_RENDERER` unset runs modern, `ENGINE_RENDERER=legacy` runs the legacy Vulkan path. Modern renders statics through meshlets + Hi-Z, skinned through the classic path, with shadow cascades, deferred lighting, skybox, and tonemap. Headless suites green; see Tests.
 
 ## Highlights
 
@@ -27,27 +27,28 @@ The project is an active prototype. It contains a working legacy Vulkan render p
 
 ## Current Runtime Flow
 
-The executable starts through this path:
+The executable starts through this path (modern default):
 
 ```text
 main.cpp
   -> engine::Application
   -> engine::Engine
   -> engine::Engine::run()
-  -> engine::RenderSystem
-  -> legacy engine::Renderer
-  -> engine::VkRenderer
-  -> Vulkan device / swapchain / command buffers
+  -> engine::RenderSystem (extracts GPUScene: draws, materials, lights, joints)
+  -> Engine::Renderer + SceneRenderer (render-graph path)
 ```
 
-Each frame currently performs roughly this sequence:
+Each frame the modern path runs roughly this sequence:
 
 1. Poll window events.
-2. Begin and draw editor UI.
-3. Update camera, gameplay, physics, navigation, and animation.
-4. Upload animated joint data.
-5. Collect renderable ECS entities into instance draw calls.
-6. Submit the legacy Vulkan frame.
+2. Update camera, gameplay, physics, navigation, and animation.
+3. Extract `GPUScene` from the ECS registry; bake statics to meshlets on change.
+4. Shadow cascades, cluster light culling, Hi-Z pyramid build.
+5. Meshlet frustum/cone/Hi-Z cull + index compaction (single indirect draw).
+6. G-buffer (meshlet statics + classic skinned), deferred lighting, skybox.
+7. Tonemap to swapchain, editor overlay, present.
+
+`ENGINE_RENDERER=legacy` selects the legacy `engine::Renderer` to `VkRenderer` path instead.
 
 ## Renderer Paths
 
@@ -89,7 +90,6 @@ Post-processing and tonemapping
 Editor overlay
 Presentation
 ```
-
 This path is connected to:
 
 - `RenderGraph` for pass dependencies and resource lifetimes;
@@ -97,7 +97,9 @@ This path is connected to:
 - `FrameScheduler` for graphics and async-compute scheduling;
 - `FrameContext` for per-frame camera, buffers, swapchain, and scene data.
 
-It is currently an orchestration and headless-test path rather than the path used by `engine::Engine`. Several recording helpers are still stubs, and its frame setup contains simulated swapchain and buffer handles for tests.
+It is the default live path used by `engine::Engine` (falls back to legacy only if `SceneRenderer` init fails). Verified: parity scene renders 30 draws / 29 meshlets / 3 lights with 0 validation errors; see `assets/scenes/renderer_parity.scene.json`.
+
+Known gaps (Task 053 follow-ups): skinned player not yet visible in captures (classic path unverified), no visible cast shadows (shadow pass executes; receive/coverage unverified), legacy backend shows the editor overlay so no automated pixel parity exists.
 
 ## Requirements
 
@@ -184,9 +186,14 @@ Test sources are located in `tests/` and cover areas including:
 - GPU culling and Hi-Z logic;
 - meshlets and mesh streaming;
 - bindless materials;
-- frame scheduling and frame orchestration.
+- frame scheduling and frame orchestration;
+- visual pipeline contract (`tests/runtime_visual_pipeline_test.cpp`): Hi-Z tail-mip writability, mip-in-chain selection, frustum keep/cull.
 
-The current top-level CMake file builds the `engine` executable and shader target. It does not currently register these sources with CTest, so test compilation and execution may require the project’s existing test commands or individual test targets.
+Each test file carries a `// Build:` one-liner (standalone `g++`, no CTest registration). Green: visual-pipeline, occlusion-hiz, meshlet, render-graph + aliasing, deferred, clustered-lighting, bindless-material. `runtime_renderer_test` / `frame_pipeline_test` need a full-engine link (pre-existing staleness); covered by the CMake `engine` build plus live capture runs instead.
+
+## Task 053 Notes (Hi-Z Tail-Mip Fix)
+
+The Hi-Z build dispatch extent must clamp to a minimum of 1 per mip (`HiZPyramid::mipExtent`). Raw `extent >> m` underflows to 0 for small non-square tails (720p: `360>>9 = 0`), the build shader early-outs, the unwritten tail reads 0.0, and every meshlet whose lookup lands there is over-culled (nearest depth > 0). Symptom was a missing cube with `idx` stuck at ground-only counts; fixed in `SceneRenderer::recordHiZBuild`.
 
 ## Development Notes
 

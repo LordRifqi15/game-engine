@@ -1,5 +1,7 @@
 #include "core/engine.h"
 #include "renderer/Renderer.hpp"
+#include "renderer/SceneRenderer.hpp"
+#include "renderer/GPUScene.hpp"
 
 #include "core/anim_graph.h"
 #include "core/anim_graph_asset.h"
@@ -78,12 +80,24 @@ Engine::Engine(Window& window)
         config.swapchain.extent = legacy.swapchainExtent;
         renderGraphRenderer_ = std::make_unique<::Engine::Renderer>();
         renderGraphRenderer_->init(config);
-        renderGraphRenderer_->initEditorOverlay(window_.handle(), legacy.swapchainFormat);
-        if (!renderGraphRenderer_->editorReady()) {
-            // Overlay owns the single GLFW backend init; without it the UI has
-            // no context, so fall back to the fully legacy path.
+        sceneRenderer_ = std::make_unique<::Engine::SceneRenderer>();
+        if (!sceneRenderer_->init(config.device, config.physicalDevice, config.graphicsQueue,
+                                  legacy.graphicsFamily, legacy.swapchainFormat,
+                                  renderer_->vulkanDevice(), renderer_->vulkanSwapchain(),
+                                  renderer_->textureCache(), renderer_->environment())) {
+            sceneRenderer_.reset();
             renderGraphRenderer_.reset();
             rendererBackendMode_ = ::Engine::RendererBackendMode::Legacy;
+        } else {
+            renderGraphRenderer_->setSceneRenderer(sceneRenderer_.get());
+            renderGraphRenderer_->initEditorOverlay(window_.handle(), legacy.swapchainFormat);
+            if (!renderGraphRenderer_->editorReady()) {
+                // Overlay owns the single GLFW backend init; without it the UI has
+                // no context, so fall back to the fully legacy path.
+                sceneRenderer_.reset();
+                renderGraphRenderer_.reset();
+                rendererBackendMode_ = ::Engine::RendererBackendMode::Legacy;
+            }
         }
     }
     if (rendererBackendMode_ == ::Engine::RendererBackendMode::Legacy) {
@@ -118,8 +132,12 @@ Engine::Engine(Window& window)
 }
 
 bool Engine::tryLoadScene(const std::string& path) {
-    // Use Engine::SceneSerializer (alias to engine::SceneSerializer)
-    if (!::Engine::SceneSerializer::deserialize(path, scene_->registry())) {
+    // Asset-aware load: meshes append into gltfMeshes_ (reserved upfront so
+    gltfMeshes_.reserve(gltfMeshes_.size() + 4096);
+    ::Engine::SceneSerializer::SceneAssets assets;
+    assets.meshes = &gltfMeshes_;
+    assets.textures = &renderer_->textureCache();
+    if (!::Engine::SceneSerializer::deserialize(path, scene_->registry(), &assets)) {
         return false;
     }
     // Find player entity by tag
@@ -359,8 +377,10 @@ void Engine::spawnFallbackScene() {
 }
 
 Engine::~Engine() {
-    // Borrower first: modern renderer must release its fences, pools, and UI
-    // context while the legacy-owned VkDevice is still alive.
+    // Borrowers first: scene + graph renderers release pools and contexts
+    // while the legacy-owned VkDevice is still alive.
+    if (renderGraphRenderer_) renderGraphRenderer_->setSceneRenderer(nullptr);
+    sceneRenderer_.reset();
     renderGraphRenderer_.reset();
     jobs_.shutdown();
     gltfMeshes_.clear();
@@ -459,15 +479,35 @@ void Engine::run() {
         update(time_.deltaTime());
         world_->update(scene_->camera().position);
 
-        if (rendererBackendMode_ == ::Engine::RendererBackendMode::RenderGraph &&
-            renderGraphRenderer_) {
-            // Task 052: authoritative path. Simulation -> extraction -> graph.
+        if (useRenderGraphRenderer(rendererBackendMode_, renderGraphRenderer_) && sceneRenderer_) {
+            // Task 053: authoritative path. Simulation -> extraction -> upload -> graph.
             ::Engine::FrameContext ctx;
-            if (renderGraphRenderer_->beginFrame(
-                    ctx, static_cast<float>(time_.deltaTime()))) {
-                renderSystem.extractGPUScene(scene_->registry(), scene_->camera(), ctx);
-                renderGraphRenderer_->renderFrame(ctx);
+            if (renderGraphRenderer_->beginFrame(ctx, static_cast<float>(time_.deltaTime()))) {
+                renderSystem.extractGPUScene(scene_->registry(), scene_->camera(), scene_->light(),
+                                             gpuScene_, ctx);
+                const char* exposureEnv = std::getenv("ENGINE_EXPOSURE");
+                if (exposureEnv) sceneRenderer_->setExposure(static_cast<float>(std::atof(exposureEnv)));
+                const char* debugEnv = std::getenv("ENGINE_DEBUG_VIEW");
+                if (debugEnv) sceneRenderer_->setDebugView(std::atoi(debugEnv));
+                renderGraphRenderer_->renderFrame(ctx, &gpuScene_);
                 renderGraphRenderer_->endFrame(ctx);
+                {
+                    static uint64_t captureTick = 0;
+                    const char* captureEnv = std::getenv("ENGINE_READBACK");
+                    if (captureEnv && captureEnv[0] == '1' && (++captureTick % 240 == 0)) {
+                        sceneRenderer_->debugReadback("/tmp/modern_capture.ppm");
+                        sceneRenderer_->debugReadbackDepth("/tmp/modern_history.ppm");
+                    }
+                }
+                if (debugTiming_) {
+                    const auto& stats = sceneRenderer_->stats();
+                    std::fprintf(stderr,
+                                 "[renderer] instances: %u meshlets: %u lights: %u draws: %u tris: %u "
+                                 "pages: %u/%u requests: %u\n",
+                                 stats.instances, stats.meshlets, stats.lights, stats.draws,
+                                 stats.triangles, stats.residentPages, stats.totalPages,
+                                 stats.pageRequests);
+                }
             } else if (renderGraphRenderer_->framebufferResized()) {
                 renderer_->recreateSwapchain();
                 const RuntimeRendererInfo info = renderer_->runtimeInfo();

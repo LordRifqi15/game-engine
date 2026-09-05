@@ -1,0 +1,92 @@
+{
+  "scene": "Renderer Parity",
+  "version": 1,
+  "entities": [
+    {
+      "tag": "Player",
+      "transform": {
+        "position": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "mesh": { "gltf": "assets/models/SimpleSkin/SimpleSkin.gltf", "primitive": 0 },
+      "physics": {
+        "mass": 1.0,
+        "linearDamping": 10.0,
+        "useGravity": true
+      },
+      "collider": { "type": "Sphere", "radius": 0.5 }
+    },
+    {
+      "tag": "TexturedCube",
+      "transform": {
+        "position": [-3.0, 1.0, -2.0],
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "mesh": { "gltf": "assets/models/cube.gltf", "primitive": 0 }
+    },
+    {
+      "tag": "MetalCube",
+      "transform": {
+        "position": [3.0, 1.0, -2.0],
+        "rotation": [0.0, 0.5, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "mesh": {
+        "gltf": "assets/models/cube.gltf",
+        "primitive": 0,
+        "material": { "color": [0.9, 0.9, 0.95, 1.0], "metallic": 1.0, "roughness": 0.25 }
+      }
+    },
+    {
+      "tag": "RoughCube",
+      "transform": {
+        "position": [0.0, 1.0, -5.0],
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [2.0, 2.0, 2.0]
+      },
+      "mesh": {
+        "gltf": "assets/models/cube.gltf",
+        "primitive": 0,
+        "material": { "color": [0.8, 0.2, 0.15, 1.0], "metallic": 0.0, "roughness": 0.9 }
+      }
+    },
+    {
+      "tag": "ShadowCaster",
+      "transform": {
+        "position": [0.0, 3.0, 2.0],
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 3.0, 1.0]
+      },
+      "mesh": {
+        "gltf": "assets/models/cube.gltf",
+        "primitive": 0,
+        "material": { "color": [0.2, 0.5, 0.8, 1.0], "metallic": 0.1, "roughness": 0.5 }
+      }
+    },
+    {
+      "tag": "KeyLight",
+      "transform": { "position": [4.0, 5.0, 3.0] },
+      "pointLight": { "color": [1.0, 0.9, 0.8], "intensity": 30.0, "radius": 15.0 }
+    },
+    {
+      "tag": "FillLight",
+      "transform": { "position": [-5.0, 3.0, 2.0] },
+      "pointLight": { "color": [0.4, 0.6, 1.0], "intensity": 15.0, "radius": 12.0 }
+    },
+    {
+      "tag": "RimLight",
+      "transform": { "position": [0.0, 4.0, -7.0] },
+      "pointLight": { "color": [1.0, 0.4, 0.4], "intensity": 20.0, "radius": 12.0 }
+    },
+    {
+      "tag": "Sun",
+      "directionalLight": {
+        "direction": [0.3, -1.0, -0.4],
+        "color": [1.0, 0.98, 0.92],
+        "intensity": 1.2
+      }
+    }
+  ]
+}

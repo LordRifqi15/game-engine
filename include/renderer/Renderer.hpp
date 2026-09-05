@@ -17,6 +17,9 @@ struct ImGuiContext;
 
 namespace Engine {
 
+struct GPUScene;
+class SceneRenderer;
+
 enum class RendererBackendMode {
     Legacy,
     RenderGraph
@@ -60,6 +63,11 @@ public:
 
     // 2. Render Frame: assembles DAG, compiles barriers, schedules multi-queue submission
     void renderFrame(FrameContext& ctx);
+    void renderFrame(FrameContext& ctx, const GPUScene* scene);
+
+    // Authoritative scene path (Task 053). When set, buildFrameGraph delegates
+    // to the scene renderer and records carry its pipelines.
+    void setSceneRenderer(class SceneRenderer* renderer) { sceneRenderer_ = renderer; }
 
     // 3. End Frame: presents and advances frame slot
     void endFrame(const FrameContext& ctx);
@@ -118,6 +126,8 @@ private:
 
     // Persistent resources for HiZ / previous frame
     ResourceHandle previousFrameDepth_{};
+    SceneRenderer* sceneRenderer_{nullptr};
+    const GPUScene* activeScene_{nullptr};
 };
 
 } // namespace Engine

@@ -14,6 +14,7 @@ public:
     ~BindlessDescriptorManager() { if (device_ != VK_NULL_HANDLE) shutdown(); }
 
     void init(VkDevice device);
+    void init(VkDevice device, VkPhysicalDevice physicalDevice);
     void shutdown();
 
     // Texture slot registration
@@ -37,8 +38,8 @@ private:
     void createDescriptorSetLayout();
     void allocateDescriptorSet();
     void createMaterialBuffer();
-
     VkDevice device_{VK_NULL_HANDLE};
+    VkPhysicalDevice physicalDevice_{VK_NULL_HANDLE};
     VkDescriptorPool descriptorPool_{VK_NULL_HANDLE};
     VkDescriptorSetLayout descriptorSetLayout_{VK_NULL_HANDLE};
     VkDescriptorSet descriptorSet_{VK_NULL_HANDLE};

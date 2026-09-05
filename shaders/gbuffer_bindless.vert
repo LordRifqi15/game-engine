@@ -23,7 +23,10 @@ layout(location = 10) in vec4 inJointWeights;
 layout(location = 3) in mat4 instanceModel;
 layout(location = 7) in vec4 instanceColor;
 layout(location = 8) in vec4 instanceParams;
-layout(location = 11) in uint inMaterialID;
+
+layout(push_constant) uniform DrawParams {
+    uint materialID;
+} draw;
 
 layout(location = 0) out vec3 outWorldPos;
 layout(location = 1) out vec3 outWorldNormal;
@@ -47,5 +50,5 @@ void main() {
     outWorldNormal = normalize(normalMat * inNormal);
     outWorldPos = worldPos.xyz;
     outUV = inUV;
-    outMaterialID = inMaterialID;
+    outMaterialID = draw.materialID;
 }

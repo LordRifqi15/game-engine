@@ -10,6 +10,10 @@ struct GPUMeshlet {
     uint vertexCount;
     uint triangleOffset;
     uint triangleCount;
+    uint pageID;     // residency page (CPU bakes into padding[0])
+    uint pad0;
+    uint pad1;
+    uint pad2;
 };
 
 struct GPUMeshInstance {
@@ -28,6 +32,12 @@ struct DrawIndexedIndirectCommand {
     uint firstInstance;
 };
 
+// Residency protocol (synchronous upload keeps every page resident; the guard
+// below still skips unloaded pages and queues a request instead of indexing
+// garbage).
+const uint PAGE_RESIDENT = 2;
+const uint PAGE_UNLOADED = 0;
+
 layout(std430, set = 0, binding = 0) readonly buffer MeshletsSSBO { GPUMeshlet meshlets[]; };
 layout(std430, set = 0, binding = 1) readonly buffer InstancesSSBO { GPUMeshInstance instances[]; };
 layout(std430, set = 0, binding = 2) readonly buffer UniqueVerticesSSBO { uint uniqueVertexIndices[]; };
@@ -36,12 +46,17 @@ layout(std430, set = 0, binding = 3) readonly buffer LocalTrianglesSSBO { uint p
 layout(std430, set = 0, binding = 4) buffer CompactedIndexBuffer { uint globalIndexStream[]; };
 layout(std430, set = 0, binding = 5) buffer IndirectDrawBuffer { DrawIndexedIndirectCommand drawCommand; };
 
-layout(set = 0, binding = 6) uniform sampler2D hizPyramid; // Reused from Task 047
+layout(set = 0, binding = 6) uniform sampler2D hizPyramid;
+layout(std430, set = 0, binding = 7) buffer ResidencySSBO { uint pageStatus[]; };
+layout(std430, set = 0, binding = 8) buffer PageRequestSSBO { uint requestCount; uint requests[]; };
 
-layout(push_constant) uniform CullParams {
+layout(set = 0, binding = 9) uniform CullCameraUBO {
     mat4 view;
     mat4 proj;
     vec4 frustumPlanes[6];
+} camera;
+
+layout(push_constant) uniform CullParams {
     vec3 cameraWorldPos;
     float zNear;
     vec2 hizExtent;
@@ -56,9 +71,33 @@ bool isConeBackfacing(vec3 coneCenter, vec3 coneAxis, float sinCutoff) {
 
 bool isFrustumVisible(vec3 center, float radius) {
     for (int i = 0; i < 6; ++i) {
-        if (dot(push.frustumPlanes[i].xyz, center) + push.frustumPlanes[i].w < -radius) return false;
+        if (dot(camera.frustumPlanes[i].xyz, center) + camera.frustumPlanes[i].w < -radius) return false;
     }
     return true;
+}
+
+bool isOccludedByHiZ(vec3 center, float radius) {
+    vec4 viewC = camera.view * vec4(center, 1.0);
+    float dist = -viewC.z;
+    if (dist <= push.zNear + radius) return false; // near-plane guard: keep
+    vec4 clip = camera.proj * viewC;
+    if (clip.w <= 0.0) return false;
+    // Vulkan texel (0,0) displays top-left while NDC (-1,-1) maps to the
+    // bottom-left pixel: mirror V relative to the Y-flipped projection.
+    vec2 uv = vec2(clip.x / clip.w * 0.5 + 0.5, 0.5 - clip.y / clip.w * 0.5);
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return false;
+    // Screen-space radius via projection scale factors (abs: Vulkan Y is flipped).
+    vec2 radiusUV = vec2(radius * abs(camera.proj[0][0]), radius * abs(camera.proj[1][1])) / clip.w;
+    float maxR = max(radiusUV.x, radiusUV.y);
+    vec2 extentPx = maxR * 2.0 * push.hizExtent;
+    float mip = clamp(ceil(log2(max(max(extentPx.x, extentPx.y), 1.0))), 0.0, float(push.maxMipLevel));
+    float occluderDepth = textureLod(hizPyramid, uv, mip).r;
+    // Device depth of the sphere's nearest point toward the camera.
+    float nearestDist = max(dist - radius, push.zNear);
+    vec4 nearView = vec4(viewC.xyz * (nearestDist / dist), 1.0);
+    vec4 nearClip = camera.proj * nearView;
+    float nearestDepth = clamp((nearClip.z / nearClip.w) * 0.5 + 0.5, 0.0, 1.0);
+    return nearestDepth > occluderDepth + 1e-4;
 }
 
 void main() {
@@ -66,40 +105,27 @@ void main() {
     if (globalMeshletID >= push.totalMeshlets) return;
 
     GPUMeshlet m = meshlets[globalMeshletID];
-    
-    // World center (for this test, boundingSphere is already in world/local as stored; assume world)
     vec3 worldCenter = m.boundingSphere.xyz;
     float radius = m.boundingSphere.w;
-
-    // 1. Backface Cone Culling
-    if (isConeBackfacing(worldCenter, m.normalCone.xyz, m.normalCone.w)) {
+    // 0. Residency gate: never index an unloaded page. Queue a request and skip.
+    if (pageStatus[m.pageID] != PAGE_RESIDENT) {
+        uint slot = atomicAdd(requestCount, 1);
+        if (slot < 1024) requests[slot] = m.pageID;
         return;
     }
 
-    // 2. Frustum Culling
-    if (!isFrustumVisible(worldCenter, radius)) {
-        return;
-    }
+    // 1. Backface cone culling
+    if (isConeBackfacing(worldCenter, m.normalCone.xyz, m.normalCone.w)) return;
+    // 2. Frustum culling
+    if (!isFrustumVisible(worldCenter, radius)) return;
+    // 3. Hi-Z occlusion against the previous frame's depth pyramid
+    if (isOccludedByHiZ(worldCenter, radius)) return;
 
-    // 3. Hi-Z Occlusion (simplified: project sphere to AABB and test)
-    // For brevity, we do a simple frustum-like HiZ test: if sphere is behind HiZ max depth, cull
-    // Full implementation would project to screen AABB and sample hizPyramid as in Task 047
-    // Here we just do a conservative check: if sphere's nearest depth > 1.0 (far), cull
-    // This is a placeholder for the full HiZ logic which reuses hizPyramid sampling
-    // For test purposes, we consider HiZ as not culling (always visible) unless we want to test occlusion
-    // The actual occlusion test is done via isFrustumVisible and cone; HiZ is optional
-
-    // Alternative: sample HiZ if needed (mirrors instance_cull.comp logic)
-    // For now, we skip HiZ culling in this shader stub to keep it simple, but keep binding
-    // To demonstrate, we can do a simple depth test:
-    // vec4 viewCenter = push.view * vec4(worldCenter, 1.0);
-    // etc.
-
-    // 3. Atomically reserve space in global compacted index buffer
+    // 4. Atomically reserve space in the global compacted index buffer
     uint indexCount = m.triangleCount * 3;
     uint dstOffset = atomicAdd(drawCommand.indexCount, indexCount);
 
-    // 4. Unpack local 8-bit triangle indices into global 32-bit vertex indices
+    // 5. Unpack local 8-bit triangle indices into global 32-bit vertex indices
     for (uint i = 0; i < indexCount; ++i) {
         uint localVertexIdx = packedLocalIndices[m.triangleOffset + i];
         uint globalVertexIdx = uniqueVertexIndices[m.vertexOffset + localVertexIdx];

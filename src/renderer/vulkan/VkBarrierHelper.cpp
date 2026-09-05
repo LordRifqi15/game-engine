@@ -159,7 +159,7 @@ void RenderGraph::resolveBarriers(uint32_t passIndex, VkCommandBuffer cmdBuffer)
             barrier.image = res.image;
             barrier.subresourceRange.aspectMask = getAspectMask(res, currentUsage);
             barrier.subresourceRange.baseMipLevel = 0;
-            barrier.subresourceRange.levelCount = 1;
+            barrier.subresourceRange.levelCount = std::max(1u, res.desc.mipLevels);
             barrier.subresourceRange.baseArrayLayer = 0;
             barrier.subresourceRange.layerCount = 1;
             vkCmdPipelineBarrier(cmdBuffer, srcState.stageMask, dstState.stageMask,

@@ -27,7 +27,8 @@ GBufferHandles GBuffer::declare(RenderGraph& graph, VkExtent2D extent) {
         .name = "SceneDepth",
         .format = VK_FORMAT_D32_SFLOAT,
         .extent = extent,
-        .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                 VK_IMAGE_USAGE_TRANSFER_SRC_BIT
     });
     return handles;
 }

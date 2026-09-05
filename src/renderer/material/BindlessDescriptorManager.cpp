@@ -1,11 +1,15 @@
 #include "renderer/material/BindlessDescriptorManager.hpp"
+#include "renderer/vulkan/VkDeviceMemoryHelper.hpp"
 #include <stdexcept>
 #include <cstring>
 
 namespace Engine {
 
-void BindlessDescriptorManager::init(VkDevice device) {
+void BindlessDescriptorManager::init(VkDevice device) { init(device, VK_NULL_HANDLE); }
+
+void BindlessDescriptorManager::init(VkDevice device, VkPhysicalDevice physical) {
     device_ = device;
+    physicalDevice_ = physical;
     materialData_.assign(MAX_MATERIALS, GPUMaterial{});
     textureSlots_.assign(MAX_BINDLESS_TEXTURES, VK_NULL_HANDLE);
     freeSlots_.clear();
@@ -114,28 +118,30 @@ void BindlessDescriptorManager::initSamplers() {
 void BindlessDescriptorManager::createDescriptorSetLayout() {
     VkDescriptorSetLayoutBinding bindings[3]{};
 
-    // Binding 0: Unbounded Sampled Image Array (texture2D globalTextures[])
+    // Binding 0: Static Samplers Array (sampler globalSamplers[])
     bindings[0].binding = 0;
-    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-    bindings[0].descriptorCount = MAX_BINDLESS_TEXTURES;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    bindings[0].descriptorCount = static_cast<uint32_t>(SamplerType::Count);
     bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 1: Static Samplers Array (sampler globalSamplers[])
+    // Binding 1: Material Storage Buffer (GPUMaterial materials[])
     bindings[1].binding = 1;
-    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-    bindings[1].descriptorCount = static_cast<uint32_t>(SamplerType::Count);
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[1].descriptorCount = 1;
     bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 2: Material Storage Buffer (GPUMaterial materials[])
+    // Binding 2: Unbounded Sampled Image Array (texture2D globalTextures[]).
+    // Variable-count binding must be the highest binding number.
     bindings[2].binding = 2;
-    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[2].descriptorCount = 1;
+    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    bindings[2].descriptorCount = MAX_BINDLESS_TEXTURES;
     bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
     VkDescriptorBindingFlags bindingFlags[3] = {
-        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT,
         0,
-        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
+        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+            VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT,
     };
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo flagsInfo{};
@@ -202,7 +208,7 @@ void BindlessDescriptorManager::allocateDescriptorSet() {
     VkWriteDescriptorSet w{};
     w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     w.dstSet = descriptorSet_;
-    w.dstBinding = 1;
+    w.dstBinding = 0;
     w.dstArrayElement = 0;
     w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
     w.descriptorCount = static_cast<uint32_t>(SamplerType::Count);
@@ -225,8 +231,9 @@ void BindlessDescriptorManager::createMaterialBuffer() {
     VkMemoryAllocateInfo ai{};
     ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     ai.allocationSize = req.size;
-    // Find host visible memory type (simplified: type 0)
-    ai.memoryTypeIndex = 0;
+    ai.memoryTypeIndex = findMemoryType(physicalDevice_, req.memoryTypeBits,
+                                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     if (vkAllocateMemory(device_, &ai, nullptr, &materialMemory_) != VK_SUCCESS) {
         throw std::runtime_error("Failed to allocate material memory");
     }
@@ -240,7 +247,7 @@ void BindlessDescriptorManager::createMaterialBuffer() {
     VkWriteDescriptorSet w{};
     w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     w.dstSet = descriptorSet_;
-    w.dstBinding = 2;
+    w.dstBinding = 1;
     w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     w.descriptorCount = 1;
     w.pBufferInfo = &bufInfo;
@@ -272,7 +279,7 @@ uint32_t BindlessDescriptorManager::registerTexture(VkImageView imageView) {
         VkWriteDescriptorSet write{};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write.dstSet = descriptorSet_;
-        write.dstBinding = 0;
+        write.dstBinding = 2;
         write.dstArrayElement = slot;
         write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         write.descriptorCount = 1;

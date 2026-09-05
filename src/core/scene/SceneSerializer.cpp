@@ -12,7 +12,13 @@
 #include "core/gameplay_component.h"
 #include "core/gameplay_graph.h"
 #include "core/anim_graph_asset.h"
-
+#include "core/mesh_component.h"
+#include "core/material_component.h"
+#include "renderer/scene/LightComponent.hpp"
+#include "core/skeleton.h"
+#include "core/anim_state_machine.h"
+#include "core/gltf_loader.h"
+#include "renderer/vulkan/texture_cache.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -32,6 +38,11 @@ using json = nlohmann::json;
 static glm::vec3 vec3FromJson(const json& arr, glm::vec3 def = glm::vec3(0.0f)) {
     if (!arr.is_array() || arr.size() < 3) return def;
     return glm::vec3(arr[0].get<float>(), arr[1].get<float>(), arr[2].get<float>());
+}
+static glm::vec4 vec4FromJson(const json& arr, glm::vec4 def = glm::vec4(1.0f)) {
+    if (!arr.is_array() || arr.size() < 4) return def;
+    return glm::vec4(arr[0].get<float>(), arr[1].get<float>(), arr[2].get<float>(),
+                     arr[3].get<float>());
 }
 static json vec3ToJson(const glm::vec3& v) {
     return json::array({v.x, v.y, v.z});
@@ -243,7 +254,8 @@ bool SceneSerializer::serialize(const std::filesystem::path& filepath, ::engine:
     return true;
 }
 
-bool SceneSerializer::deserialize(const std::filesystem::path& filepath, ::engine::Registry& registry) {
+bool SceneSerializer::deserialize(const std::filesystem::path& filepath, ::engine::Registry& registry,
+                                  SceneAssets* assets) {
     std::ifstream in(filepath);
     if (!in.is_open()) {
         std::fprintf(stderr, "[scene] Failed to open %s for reading\n", filepath.c_str());
@@ -332,6 +344,89 @@ bool SceneSerializer::deserialize(const std::filesystem::path& filepath, ::engin
                 col.centerOffset = vec3FromJson(cJson["centerOffset"], glm::vec3(0,0.5f,0));
             }
             registry.addComponent<::Engine::ColliderComponent>(entity, col);
+        }
+
+        // Mesh + material + skeleton (Task 053 parity scenes)
+        if (assets && assets->meshes && entityJson.contains("mesh")) {
+            auto& mJson = entityJson["mesh"];
+            std::string gltf = mJson.value("gltf", "");
+            uint32_t prim = mJson.value("primitive", 0);
+            if (!gltf.empty()) {
+                ::engine::GLTFModel model = ::engine::loadGLTFModel(gltf, assets->textures);
+                if (model.ok && prim < model.primitives.size()) {
+                    auto& p = model.primitives[prim];
+                    assets->meshes->push_back(std::move(p.mesh));
+                    ::engine::Mesh* meshPtr = &assets->meshes->back();
+                    ::engine::MeshComponent mc;
+                    mc.mesh = meshPtr;
+                    registry.addComponent<::engine::MeshComponent>(entity, mc);
+                    ::engine::MaterialComponent matC;
+                    matC.material = p.material;
+                    if (mJson.contains("material")) {
+                        auto& oJson = mJson["material"];
+                        if (oJson.contains("color") && oJson["color"].is_array()) {
+                            matC.material.baseColor = vec4FromJson(oJson["color"]);
+                        }
+                        matC.material.metallic = oJson.value("metallic", matC.material.metallic);
+                        matC.material.roughness = oJson.value("roughness", matC.material.roughness);
+                        if (oJson.contains("texture") && assets->textures) {
+                            const ::engine::Texture* tex = assets->textures->load(
+                                oJson.value("texture", ""));
+                            if (tex) matC.material.baseColorTexture = tex;
+                        }
+                    }
+                    registry.addComponent<::engine::MaterialComponent>(entity, matC);
+                    if (!model.skeletons.empty()) {
+                        ::engine::SkeletonComponent skelC;
+                        skelC.skeleton = model.skeletons[0];
+                        registry.addComponent<::engine::SkeletonComponent>(entity, skelC);
+                        if (!model.animations.empty()) {
+                            ::engine::AnimationComponent animC;
+                            animC.animations = model.animations;
+                            animC.speed = 1.0f;
+                            animC.playing = true;
+                            animC.loop = true;
+                            float dur = animC.animations.size() > 1
+                                            ? animC.animations[1].duration
+                                            : animC.animations[0].duration;
+                            animC.machine = ::engine::makeDefaultStateMachine(
+                                animC.animations, skelC.skeleton, dur > 0.0f ? dur : 1.0f);
+                            registry.addComponent<::engine::AnimationComponent>(entity,
+                                                                               std::move(animC));
+                        }
+                    }
+                } else {
+                    std::fprintf(stderr, "[scene] mesh load failed: %s (%s)\n", gltf.c_str(),
+                                 model.error.c_str());
+                }
+            }
+        }
+
+        // Lights (point feeds clustering; directional overrides scene light)
+        if (entityJson.contains("pointLight")) {
+            auto& lJson = entityJson["pointLight"];
+            ::Engine::PointLightComponent lc;
+            if (lJson.contains("color") && lJson["color"].is_array()) {
+                lc.color = vec3FromJson(lJson["color"], glm::vec3(1.0f));
+            }
+            lc.intensity = lJson.value("intensity", 10.0f);
+            lc.radius = lJson.value("radius", 10.0f);
+            if (lJson.contains("position") && lJson["position"].is_array()) {
+                lc.position = vec3FromJson(lJson["position"]);
+            }
+            registry.addComponent<::Engine::PointLightComponent>(entity, lc);
+        }
+        if (entityJson.contains("directionalLight")) {
+            auto& lJson = entityJson["directionalLight"];
+            ::Engine::DirectionalLightComponent lc;
+            if (lJson.contains("direction") && lJson["direction"].is_array()) {
+                lc.direction = vec3FromJson(lJson["direction"], glm::vec3(0.0f, -1.0f, -1.0f));
+            }
+            if (lJson.contains("color") && lJson["color"].is_array()) {
+                lc.color = vec3FromJson(lJson["color"], glm::vec3(1.0f));
+            }
+            lc.intensity = lJson.value("intensity", 1.0f);
+            registry.addComponent<::Engine::DirectionalLightComponent>(entity, lc);
         }
 
         // Blackboard

@@ -12,10 +12,10 @@ layout(std430, set = 0, binding = 0) readonly buffer VertexSSBO {
     Vertex globalVertices[];
 };
 
+// Upload bakes world-space vertices (model is identity) and the bindless
+// material ID (padding.x), so one indirect draw covers all static materials.
 layout(push_constant) uniform TransformBlock {
     mat4 viewProj;
-    mat4 model;
-    uint materialID;
 } push;
 
 layout(location = 0) out vec3 outWorldPos;
@@ -24,14 +24,16 @@ layout(location = 2) out vec2 outUV;
 layout(location = 3) flat out uint outMaterialID;
 
 void main() {
-    // Fetch vertex data directly via gl_VertexIndex resolved from CompactedIndexBuffer
+    // Fetch vertex data directly via gl_VertexIndex resolved from CompactedIndexBuffer.
+    // Upload bakes the bindless material ID into padding.x (model is identity:
+    // statics are baked in world space), so one indirect draw covers all materials.
     Vertex v = globalVertices[gl_VertexIndex];
 
-    vec4 worldPos = push.model * vec4(v.position.xyz, 1.0);
+    vec4 worldPos = vec4(v.position.xyz, 1.0);
     outWorldPos = worldPos.xyz;
-    outWorldNormal = mat3(push.model) * v.normal.xyz;
+    outWorldNormal = v.normal.xyz;
     outUV = v.uv;
-    outMaterialID = push.materialID;
+    outMaterialID = uint(v.padding.x + 0.5);
 
     gl_Position = push.viewProj * worldPos;
 }

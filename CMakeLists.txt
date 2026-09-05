@@ -56,7 +56,7 @@ add_executable(engine
     src/platform/input.cpp
     src/renderer/renderer.cpp
     src/renderer/Renderer.cpp
-    src/renderer/FrameContext.cpp
+    src/renderer/SceneRenderer.cpp
     src/renderer/deferred/GBuffer.cpp
     src/renderer/deferred/DeferredPipeline.cpp
     src/renderer/lighting/ClusteredLighting.cpp
@@ -115,6 +115,8 @@ set(SHADER_SRC
     shaders/meshlet_cull_stream.comp
     shaders/deferred_lighting.vert
     shaders/deferred_lighting.frag
+    shaders/tonemap.vert
+    shaders/tonemap.frag
 )
 set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/basic.vert.spv
@@ -138,6 +140,8 @@ set(SHADER_OUT
     ${CMAKE_BINARY_DIR}/shaders/meshlet_cull_stream.comp.spv
     ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.vert.spv
     ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.frag.spv
+    ${CMAKE_BINARY_DIR}/shaders/tonemap.vert.spv
+    ${CMAKE_BINARY_DIR}/shaders/tonemap.frag.spv
 )
 
 add_custom_command(
@@ -164,6 +168,8 @@ add_custom_command(
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/meshlet_cull_stream.comp -o ${CMAKE_BINARY_DIR}/shaders/meshlet_cull_stream.comp.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/deferred_lighting.vert -o ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.vert.spv
     COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/deferred_lighting.frag -o ${CMAKE_BINARY_DIR}/shaders/deferred_lighting.frag.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tonemap.vert -o ${CMAKE_BINARY_DIR}/shaders/tonemap.vert.spv
+    COMMAND ${GLSLC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/tonemap.frag -o ${CMAKE_BINARY_DIR}/shaders/tonemap.frag.spv
     DEPENDS ${SHADER_SRC}
     COMMENT "Compiling shaders"
 )

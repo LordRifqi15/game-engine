@@ -20,8 +20,10 @@
 
 namespace Engine {
 class Renderer;
+class SceneRenderer;
 enum class RendererBackendMode;
-}
+} // namespace Engine
+#include "renderer/GPUScene.hpp"
 
 namespace engine {
 
@@ -50,6 +52,8 @@ private:
     Time time_;
     Renderer* renderer_ = nullptr;
     std::unique_ptr<::Engine::Renderer> renderGraphRenderer_;
+    std::unique_ptr<::Engine::SceneRenderer> sceneRenderer_;
+    ::Engine::GPUScene gpuScene_;
     ::Engine::RendererBackendMode rendererBackendMode_;
     Scene* scene_ = nullptr;
     class Mesh* triangleMesh_ = nullptr;

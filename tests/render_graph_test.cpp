@@ -1,5 +1,5 @@
 // Render Graph: topological sort, cycle detection, barrier tests
-// Build: g++ -std=c++17 -I../include -I../third_party ../src/renderer/graph/RenderGraph.cpp ../src/renderer/graph/RenderGraphBuilder.cpp ../src/renderer/graph/RenderGraphResources.cpp ../src/renderer/vulkan/VkBarrierHelper.cpp render_graph_test.cpp -o /tmp/render_graph_test -lvulkan && /tmp/render_graph_test
+// Build: g++ -std=c++17 -I../include -I../third_party ../src/renderer/graph/RenderGraph.cpp ../src/renderer/graph/RenderGraphBuilder.cpp ../src/renderer/graph/RenderGraphResources.cpp ../src/renderer/vulkan/VkBarrierHelper.cpp render_graph_test.cpp ../src/renderer/graph/TransientResourcePool.cpp ../src/renderer/graph/ResourceLifetime.cpp ../src/renderer/vulkan/VkDeviceMemoryHelper.cpp -o /tmp/render_graph_test -lvulkan && /tmp/render_graph_test
 
 #include "renderer/graph/RenderGraph.hpp"
 #include "renderer/graph/RenderGraphBuilder.hpp"

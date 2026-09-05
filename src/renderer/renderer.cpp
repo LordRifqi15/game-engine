@@ -67,6 +67,9 @@ RuntimeRendererInfo Renderer::runtimeInfo() const {
 }
 
 void Renderer::recreateSwapchain() { impl_->backend.recreateSwapchain(); }
+VulkanDevice& Renderer::vulkanDevice() { return impl_->backend.vulkanDevice(); }
+VulkanSwapchain& Renderer::vulkanSwapchain() { return impl_->backend.vulkanSwapchain(); }
+VulkanEnvironment& Renderer::environment() { return impl_->backend.environment(); }
 void Renderer::enableEditorOverlay(Window& window) {
     impl_->backend.enableEditorOverlay(window);
 }

@@ -78,9 +78,26 @@ VulkanDevice::VulkanDevice(VulkanInstance& vk)
         !supported13.dynamicRendering) {
         fatal("GPU lacks required Vulkan features (timelineSemaphore/synchronization2/dynamicRendering)");
     }
+    // Task 053: bindless global textures need descriptor indexing.
+    if (!supported12.descriptorBindingPartiallyBound ||
+        !supported12.descriptorBindingVariableDescriptorCount ||
+        !supported12.runtimeDescriptorArray ||
+        !supported12.descriptorBindingSampledImageUpdateAfterBind ||
+        !supported12.shaderSampledImageArrayNonUniformIndexing) {
+        fatal("GPU lacks required bindless features (descriptorBindingPartiallyBound/runtimeDescriptorArray)");
+    }
     VkPhysicalDeviceVulkan12Features enable12{};
     enable12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     enable12.timelineSemaphore = VK_TRUE;
+    enable12.descriptorBindingPartiallyBound = VK_TRUE;
+    enable12.descriptorBindingVariableDescriptorCount = VK_TRUE;
+    enable12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+    enable12.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
+    enable12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+    enable12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+    enable12.runtimeDescriptorArray = VK_TRUE;
+    enable12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    enable12.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
     VkPhysicalDeviceVulkan13Features enable13{};
     enable13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     enable13.pNext = &enable12;

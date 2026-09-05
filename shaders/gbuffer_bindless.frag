@@ -10,9 +10,9 @@ layout(location = 0) out vec4 outAlbedoAO;
 layout(location = 1) out vec4 outNormalRoughness;
 layout(location = 2) out vec4 outMetallicFlags;
 
-// BINDLESS SET (Set 0)
-layout(set = 0, binding = 0) uniform texture2D globalTextures[];
-layout(set = 0, binding = 1) uniform sampler globalSamplers[];
+// BINDLESS SET (Set 1; set 0 holds the shared CameraUBO in the vertex stage).
+// NOTE: the variable-count texture array must be the HIGHEST binding number.
+layout(set = 1, binding = 0) uniform sampler globalSamplers[];
 
 struct GPUMaterial {
     uint albedoTextureID;
@@ -25,9 +25,11 @@ struct GPUMaterial {
     vec2 padding;
 };
 
-layout(std430, set = 0, binding = 2) readonly buffer MaterialSSBO {
+layout(std430, set = 1, binding = 1) readonly buffer MaterialSSBO {
     GPUMaterial materials[];
 };
+
+layout(set = 1, binding = 2) uniform texture2D globalTextures[];
 
 void main() {
     GPUMaterial mat = materials[nonuniformEXT(inMaterialID)];

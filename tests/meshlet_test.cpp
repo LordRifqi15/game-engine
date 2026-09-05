@@ -1,5 +1,5 @@
 // Meshlet: clustering, cone math, index compaction
-// Build: g++ -std=c++17 -I../include -I../third_party ../src/renderer/meshlet/MeshletBuilder.cpp ../src/renderer/meshlet/MeshletPipeline.cpp ../src/renderer/graph/RenderGraph.cpp ../src/renderer/graph/RenderGraphBuilder.cpp ../src/renderer/graph/RenderGraphResources.cpp ../src/renderer/graph/ResourceLifetime.cpp ../src/renderer/graph/TransientResourcePool.cpp ../src/renderer/vulkan/VkBarrierHelper.cpp ../src/renderer/vulkan/VkDeviceMemoryHelper.cpp meshlet_test.cpp -o /tmp/meshlet_test -lvulkan && /tmp/meshlet_test
+// Build: g++ -std=c++17 -I../include -I../third_party ../src/renderer/meshlet/MeshletBuilder.cpp ../src/renderer/meshlet/MeshletPipeline.cpp ../src/renderer/graph/RenderGraph.cpp ../src/renderer/graph/RenderGraphBuilder.cpp ../src/renderer/graph/RenderGraphResources.cpp ../src/renderer/graph/ResourceLifetime.cpp ../src/renderer/graph/TransientResourcePool.cpp ../src/renderer/vulkan/VkBarrierHelper.cpp ../src/renderer/vulkan/VkDeviceMemoryHelper.cpp meshlet_test.cpp ../src/renderer/deferred/GBuffer.cpp -o /tmp/meshlet_test -lvulkan && /tmp/meshlet_test
 
 #include "renderer/meshlet/MeshletTypes.hpp"
 #include "renderer/meshlet/MeshletBuilder.hpp"

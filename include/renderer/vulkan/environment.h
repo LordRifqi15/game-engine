@@ -31,9 +31,15 @@ public:
     // Set 3 layout: 0 = irradiance, 1 = prefiltered, 2 = BRDF LUT, 3 = env cube.
     VkDescriptorSetLayout set3Layout() const { return set3Layout_; }
     // One set per frame-in-flight, already written.
-    VkDescriptorSet frameSet(uint32_t frameIndex) const {
-        return frameSets_[frameIndex];
-    }
+    VkDescriptorSet frameSet(uint32_t frameIndex) const { return frameSets_[frameIndex]; }
+    // Modern deferred path: IBL source views + samplers (borrowed, never owned).
+    VkImageView irradianceView() const { return irradiance_.view; }
+    VkSampler irradianceSampler() const { return irrSampler_; }
+    VkImageView prefilteredView() const { return prefiltered_.view; }
+    VkSampler prefilteredSampler() const { return prefSampler_; }
+    VkImageView brdfView() const { return brdfView_; }
+    VkSampler brdfSampler() const { return lutSampler_; }
+    VkImageView envCubeView() const { return env_.view; }
 
     // Skybox: binds its own pipeline + env descriptor, draws the unit cube.
     void beginSkybox(VkCommandBuffer cmd, uint32_t frameIndex,

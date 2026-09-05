@@ -31,9 +31,12 @@ layout(std430, set = 0, binding = 2) buffer GlobalIndexList {
     uint lightIndices[];
 };
 
-layout(push_constant) uniform PushConstants {
+layout(set = 0, binding = 3) uniform CullCameraUBO {
     mat4 view;
     mat4 invProj;
+} camera;
+
+layout(push_constant) uniform PushConstants {
     uvec4 gridDim;       // x: tilesX, y: tilesY, z: slicesZ, w: numLights
     vec4 screenParams;   // x: screenW, y: screenH, z: zNear, w: zFar
 } params;
@@ -65,10 +68,10 @@ void computeClusterAABB(uvec3 clusterIdx, out vec3 minAABB, out vec3 maxAABB) {
     // Scale derived from projection would be 1/proj[0][0]; use 1.0 if unknown
     float scaleX = 1.0;
     float scaleY = 1.0;
-    // Use params.invProj to unproject if needed; simplified
-    vec4 viewMinNear = params.invProj * vec4(ndcMin, 0.0, 1.0);
+    // Use camera.invProj to unproject if needed; simplified
+    vec4 viewMinNear = camera.invProj * vec4(ndcMin, 0.0, 1.0);
     viewMinNear /= viewMinNear.w;
-    vec4 viewMaxFar = params.invProj * vec4(ndcMax, 1.0, 1.0);
+    vec4 viewMaxFar = camera.invProj * vec4(ndcMax, 1.0, 1.0);
     viewMaxFar /= viewMaxFar.w;
     // Fallback to simple
     if (length(viewMinNear.xyz) < 0.001) {
@@ -115,7 +118,7 @@ void main() {
         GPULight light = lights[i];
         if (light.type == 0) continue; // Skip Directional
 
-        vec3 lightViewPos = (params.view * vec4(light.positionRadius.xyz, 1.0)).xyz;
+        vec3 lightViewPos = (camera.view * vec4(light.positionRadius.xyz, 1.0)).xyz;
         float radius = light.positionRadius.w;
 
         if (testSphereAABB(lightViewPos, radius, s_AABBMin, s_AABBMax)) {

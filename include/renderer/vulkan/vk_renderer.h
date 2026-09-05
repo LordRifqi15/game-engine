@@ -26,6 +26,7 @@ class VulkanInstance;
 class VulkanDevice;
 class VulkanPipeline;
 class VulkanCommandBuffer;
+class VulkanEnvironment;
 
 class VkRenderer {
 public:
@@ -70,6 +71,9 @@ public:
 
     const Texture* loadTexture(const std::string& path) { return textureCache_->load(path); }
     TextureCache& textureCache() { return *textureCache_; }
+    VulkanDevice& vulkanDevice() { return *device_; }
+    VulkanSwapchain& vulkanSwapchain() { return *swapchain_; }
+    class VulkanEnvironment& environment();
     void requestDepthReadback() { swapchain_->requestDepthReadback(); }
     const std::vector<float>& depthPixels() const { return swapchain_->depthPixels(); }
 

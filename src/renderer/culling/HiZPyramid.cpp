@@ -62,7 +62,7 @@ bool HiZPyramid::projectSphereToAABB(const glm::vec3& worldCenter, float radius,
     if (clipCenter.w == 0.0f) return false;
     glm::vec2 ndcCenter = glm::vec2(clipCenter.x / clipCenter.w, clipCenter.y / clipCenter.w) * 0.5f + 0.5f;
     float P00 = proj[0][0];
-    float P11 = proj[1][1];
+    float P11 = std::abs(proj[1][1]); // abs: Vulkan Y-flip (mirrors meshlet_cull.comp)
     float radiusX = (radius * P00) / -viewCenter.z;
     float radiusY = (radius * P11) / -viewCenter.z;
     glm::vec2 aabbMin = glm::clamp(ndcCenter - glm::vec2(radiusX, radiusY) * 0.5f, glm::vec2(0.0f), glm::vec2(1.0f));
